@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#04243f">
+<title>海ドロップ</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+  html,body{height:100%;overflow:hidden;background:#021526;color:#fff;
+    font-family:"Hiragino Maru Gothic ProN","Hiragino Sans","Noto Sans JP",sans-serif;touch-action:none;overscroll-behavior:none}
+  /* 画面いっぱいに使う。ノッチ・ダイナミックアイランド・ホームバーは端末が返す safe-area 分だけ避ける */
+  #app{position:fixed;inset:0;display:flex;flex-direction:column;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  #stage{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;min-width:0}
+  /* ゲームウィンドウ。--u = ワールド座標1あたりのCSS px（resize() で設定） */
+  #frame{position:relative;overflow:hidden;--u:1px}
+  canvas{display:block}
+  #hud{position:absolute;left:0;right:0;top:0;height:calc(var(--u)*64);pointer-events:none;
+    display:flex;align-items:center;justify-content:space-between;gap:calc(var(--u)*6);padding:0 calc(var(--u)*10);
+    background:linear-gradient(rgba(0,18,40,.55),rgba(0,18,40,0))}
+  .box{background:rgba(0,25,55,.5);border:1px solid rgba(255,255,255,.28);border-radius:calc(var(--u)*14);
+    padding:calc(var(--u)*3) calc(var(--u)*10);text-align:center;min-width:calc(var(--u)*84);
+    backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+  .lbl{font-size:calc(var(--u)*10);opacity:.8;letter-spacing:.1em}
+  .val{font-size:calc(var(--u)*22);font-weight:bold;line-height:1.15;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+  #next{height:calc(var(--u)*27);display:flex;align-items:center;justify-content:center}
+  #next img{width:calc(var(--u)*27);height:calc(var(--u)*27)}
+  .ib{pointer-events:auto;width:calc(var(--u)*40);height:calc(var(--u)*40);border-radius:50%;border:1px solid rgba(255,255,255,.35);
+    background:rgba(0,25,55,.5);color:#fff;font-size:calc(var(--u)*19);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+  /* 進化の順番：ゲームウィンドウ最下部（砂地の帯）に重ねる */
+  #chain{position:absolute;left:0;right:0;bottom:0;height:calc(var(--u)*30);pointer-events:none;
+    display:flex;justify-content:center;align-items:center;gap:1px;background:rgba(0,20,45,.45)}
+  #chain img{width:calc(var(--u)*24);height:calc(var(--u)*24)}
+  #chain span.a{opacity:.5;font-size:calc(var(--u)*10)}
+  .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,20,40,.72);z-index:10;backdrop-filter:blur(3px)}
+  .ov.hide{display:none}
+  .card{background:linear-gradient(#0e4d7a,#073256);border:2px solid rgba(160,220,255,.5);border-radius:22px;padding:26px 24px;width:min(86vw,340px);text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+  .card h1{font-size:34px;margin-bottom:6px;text-shadow:0 3px 0 #04243f}
+  .card p{font-size:14px;line-height:1.7;opacity:.9;margin:8px 0}
+  .card .big{font-size:44px;font-weight:bold;margin:6px 0}
+  .btn{margin-top:14px;font-size:20px;font-weight:bold;padding:12px 36px;border-radius:40px;border:none;color:#04243f;
+    background:linear-gradient(#bff4ff,#5fd3f3);box-shadow:0 4px 0 #1d7ea0}
+  .btn:active{transform:translateY(3px);box-shadow:0 1px 0 #1d7ea0}
+  .row{font-size:24px;letter-spacing:2px;margin:6px 0}
+  #new{color:#ffe066;font-weight:bold;display:none}
+  /* ===== タイトル画面 ===== */
+  #title{position:fixed;inset:0;z-index:9;overflow:hidden;background:#0a4f93}
+  #title.hide{display:none}
+  #titleBg{position:absolute;inset:-30px;background:url(img/title.jpg) center/cover;filter:blur(18px) brightness(.85);transform:scale(1.1)}
+  #titleInner{position:relative;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:max(env(safe-area-inset-top),44px) 0 max(env(safe-area-inset-bottom),16px)}
+  #titleArt{display:block;flex:0 1 auto;min-height:0;width:100%;max-width:520px;height:auto;object-fit:contain;
+    box-shadow:0 12px 40px rgba(0,30,70,.55);animation:tFloat 4s ease-in-out infinite}
+  @keyframes tFloat{50%{transform:translateY(-6px)}}
+  #titleUi{flex:none;display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:-34px;padding-bottom:12px;position:relative}
+  #startBtn{font-size:26px;padding:14px 54px;letter-spacing:.15em;animation:tPulse 1.6s ease-in-out infinite;
+    background:linear-gradient(#fff6a8,#ffc93c);color:#6b2a00;box-shadow:0 5px 0 #c77a00,0 0 24px rgba(255,220,90,.7)}
+  #startBtn:active{transform:translateY(4px);box-shadow:0 1px 0 #c77a00}
+  @keyframes tPulse{50%{transform:scale(1.06)}}
+  #titleSub{display:flex;align-items:center;gap:14px;font-size:14px;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+  #howBtn{font-size:14px;color:#fff;background:rgba(0,40,90,.55);border:1px solid rgba(255,255,255,.5);border-radius:20px;padding:6px 16px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage"><div id="frame">
+    <canvas id="cv"></canvas>
+    <div id="hud">
+      <div class="box"><div class="lbl">スコア</div><div class="val" id="score">0</div></div>
+      <div class="box"><div class="lbl">ネクスト</div><div id="next"></div></div>
+      <div class="box"><div class="lbl">ベスト</div><div class="val" id="best">0</div></div>
+      <button class="ib" id="snd">🔊</button>
+    </div>
+    <div id="chain"></div>
+  </div></div>
+</div>
+
+<div id="title">
+  <div id="titleBg"></div>
+  <div id="titleInner">
+    <img id="titleArt" src="img/title.jpg" alt="海ドロップ">
+    <div id="titleUi">
+      <button class="btn" id="startBtn">スタート</button>
+      <div id="titleSub">
+        <span id="titleBest"></span>
+        <button id="howBtn">遊び方</button>
+      </div>
+    </div>
+  </div>
+  <div class="ov hide" id="how">
+    <div class="card">
+      <h1 style="font-size:26px">遊び方</h1>
+      <p>同じ生き物どうしをくっつけると<br>大きな生き物に進化するよ！<br>サメを目指そう🦈</p>
+      <div class="row" id="titleChain"></div>
+      <p style="font-size:12px;opacity:.7">画面をなぞって位置を決め、指をはなすと落ちるよ<br>赤い線より上に積み上がるとゲームオーバー</p>
+      <button class="btn" id="howClose">とじる</button>
+    </div>
+  </div>
+</div>
+
+<div class="ov hide" id="over">
+  <div class="card">
+    <h1>ゲームオーバー</h1>
+    <div class="big" id="finalScore">0</div>
+    <p id="new">🎉 ベストスコア更新！</p>
+    <p id="maxLv"></p>
+    <button class="btn" id="retryBtn">もう一度</button><br>
+    <button id="toTitleBtn" style="margin-top:14px;font-size:14px;color:#fff;background:none;border:1px solid rgba(255,255,255,.5);border-radius:20px;padding:6px 18px">タイトルへ</button>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ===== 生き物データ =====
+const KINDS = [
+  { f:'00-ebi',        n:'エビ',             r:15,  c:'#b46be0' },
+  { f:'01-neon',       n:'ネオンテトラ',     r:20,  c:'#f26bc8' },
+  { f:'02-kumanomi',   n:'クマノミ',         r:26,  c:'#35c07a' },
+  { f:'03-chocho',     n:'チョウチョウウオ', r:33,  c:'#4cc9e0' },
+  { f:'04-tsunodashi', n:'ツノダシ',         r:40,  c:'#e8384a' },
+  { f:'05-tai',        n:'タイ',             r:48,  c:'#ff9a2e' },
+  { f:'06-unagi',      n:'ウナギ',           r:57,  c:'#f5b52a' },
+  { f:'07-tako',       n:'タコ',             r:67,  c:'#6a5ee0' },
+  { f:'08-maguro',     n:'マグロ',           r:78,  c:'#f5d31c' },
+  { f:'09-umigame',    n:'ウミガメ',         r:90,  c:'#8fe0d0' },
+  { f:'10-same',       n:'サメ',             r:104, c:'#3a8ef0' },
+];
+for (const k of KINDS) { k.src = `balls/${k.f}.png`; k.img = new Image(); k.img.src = k.src; }
+const kImg = (k, px) => `<img src="${k.src}" alt="${k.n}" width="${px}" height="${px}" style="vertical-align:middle">`;
+const MAX = KINDS.length - 1;
+const DROP_MAX = 4; // 落とせるのはフグまで
+
+// ===== ワールド =====
+const HUD_H = 64;                 // ゲームウィンドウ上部のスコア表示帯の高さ
+// 横幅400は固定し、縦は端末の画面比率に合わせて伸縮（iPhoneの機種ごとに画面いっぱいになる）
+const W = 400, CHAIN_H = 30;
+let H = 680 + HUD_H, FLOOR = H - CHAIN_H;
+const DROP_Y = 62 + HUD_H, LINE_Y0 = 112 + HUD_H;
+const GRAV = 560;        // 浮力で弱めた重力
+const DRAG = 1.7;        // 水の抵抗（1秒あたりの減衰率）→ 終端速度 ≒ GRAV/DRAG
+const BOUNCE = .38;      // 跳ね返り係数（水中なのでふんわり）
+const SWAY = 55;         // 沈むときの左右ゆらぎの強さ
+// 演出モードごとの物理（g:重力 drag:水の抵抗 sway:ゆらぎ e:反発 th:跳ね始める速度 fr:接線摩擦）
+const PHYS = {
+  normal:   { g: GRAV, drag: DRAG, sway: SWAY, e: BOUNCE, th: 45, fr: .05 },
+  deep: { g: 1600, drag: .05,  sway: 0,    e: BOUNCE, th: 45, fr: .05 },  // 浮力なし：ストンと落ちる
+  rush:   { g: 950,  drag: .12,  sway: 0,    e: .94,    th: 8,  fr: .01 },  // スーパーボール
+};
+const DEEP_SEC = 9, RUSH_SEC = 7, RUSH_GRACE = 3.5; // 演出の長さ・群泳ラッシュ後のゲームオーバー猶予
+const SHINE_SEC = 6;         // シャインタイムの長さ（秒）
+const SHINE_DROP_MAX = 2;    // シャインタイム中に落ちてくる球（0:エビ〜2:クマノミ）
+const SHINE_BALL_FADE = .55; // シャインタイム中の球の透け具合（0=透けない〜1=見えない）
+const shineImg = new Image(); shineImg.src = 'img/shine.png';
+// ===== 特別演出の抽選：球を1つ落とすごとに抽選 =====
+//   深潮・シャインタイムは 1ゲームに1回前後、群泳ラッシュは数ゲームに1回のレア演出。
+//   イワシの群れは通常モードのまま背景を横切るだけの演出。
+const EFFECT_ODDS = {          // 1/n の n
+  deep: 120,               // 深潮（ディープカレント）
+  shine:   120,               // シャインタイム
+  rush:   960,               // 群泳ラッシュ（スーパーボール）
+  iwashi:   960,               // イワシの群れが通るだけ
+};
+const EFFECT_RATE_SCALE = 1;   // 出現率の倍率（2 で2倍出やすく）
+let mode = null, graceT = 0, ki = 0, shakeT = 0;
+function effectLottery() {
+  if (!running || mode) return;          // 演出中は抽選しない
+  let r = Math.random();
+  for (const k in EFFECT_ODDS) {
+    const p = EFFECT_RATE_SCALE / EFFECT_ODDS[k];
+    if (r < p) { if (k === 'iwashi') fishSchool(false); else startMode(k); return; }
+    r -= p;
+  }
+}
+const curPhys = () => PHYS[mode ? mode.k : 'normal'] || PHYS.normal; // シャインタイムは通常の物理
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let scale = 1, dpr = 1;
+
+function resize() {
+  const st = document.getElementById('stage');
+  const aw = st.clientWidth, ah = st.clientHeight;
+  H = Math.round(Math.max(620, Math.min(1100, W * ah / aw)));
+  FLOOR = H - CHAIN_H;
+  scale = Math.min(aw / W, ah / H);
+  dpr = Math.min(window.devicePixelRatio || 1, 3);
+  cv.style.width = (W * scale) + 'px';
+  cv.style.height = (H * scale) + 'px';
+  cv.width = Math.round(W * scale * dpr);
+  cv.height = Math.round(H * scale * dpr);
+  document.getElementById('frame').style.setProperty('--u', scale + 'px');
+}
+window.addEventListener('resize', resize);
+
+// ===== 状態 =====
+let balls = [], parts = [], pops = [];
+let score = 0, best = 0, maxLv = 0;
+let cur = 0, nxt = 0, dropX = W / 2;
+let canDrop = true, dropCool = 0;
+let running = false, dangerT = 0, time = 0;
+let uid = 0;
+try { best = +localStorage.getItem('umiDropBest') || 0; } catch (e) {}
+
+const $ = id => document.getElementById(id);
+// ===== 難易度 =====
+// D = 基本1 ＋ 5000点ごとに+1（段階）＋ 投下数に合わせた波（0〜1、30投下で1周）
+const DIFF_STEP = 5000, DIFF_WAVE = 30;
+let drops = 0, recentX = [], diffStep = 0;
+const diffWave = () => (1 - Math.cos(2 * Math.PI * drops / DIFF_WAVE)) / 2;
+const difficulty = () => 1 + diffStep + diffWave();
+// ボーダーラインは段階ごとに 8 ずつ下がる（最大 48）
+const lineY = () => LINE_Y0 + Math.min(48, diffStep * 8);
+// 線を越えてからゲームオーバーまでの猶予（1.8秒→段階ごとに -0.1、最短1.2秒）
+// 線を越えた球が止まってから、ゲームオーバー確定までの時間（段階ごとに短く）
+const REST_SPEED = 20;
+const dangerLimit = () => Math.max(.3, .8 - diffStep * .1);
+let overLine = false;
+// 同じ場所ばかりに落としているか（直近8投下が 50px 幅の区画 2つ以内）
+function monotony() {
+  if (recentX.length < 8) return 0;
+  return new Set(recentX.map(x => x / 50 | 0)).size <= 2 ? 1 : 0;
+}
+// 盤面の「上に何も乗っていない」球の種類（＝次に合わせやすい球）
+function exposedKinds() {
+  const set = new Set();
+  for (const b of balls) {
+    if (b.dead || b.age < .5) continue;
+    const covered = balls.some(o => o !== b && o.y < b.y - b.r * .5 && Math.abs(o.x - b.x) < (o.r + b.r) * .8);
+    if (!covered) set.add(b.lv);
+  }
+  return set;
+}
+function randKind() {
+  const shine = mode && mode.k === 'shine';
+  const mx = shine ? SHINE_DROP_MAX : DROP_MAX;
+  const D = difficulty(), t = Math.min(1, D / 6);
+  // 易しい：小さい球が出やすい ⇔ 難しい：大きめの球が増える
+  const easy = [30, 26, 20, 14, 10], hard = [12, 16, 22, 26, 24];
+  const w = easy.map((e, i) => e + (hard[i] - e) * t).slice(0, mx + 1);
+  // 意地悪制御：確率で「盤面の表面に無い（合わせにくい）球」を渡す。単調な投下を続けると強くなる
+  const mono = monotony();
+  const nasty = shine ? 0 : Math.min(.9, .08 + .07 * D + .65 * mono);
+  if (Math.random() < nasty) {
+    const ex = exposedKinds(), cands = [];
+    for (let i = 0; i <= mx; i++) if (!ex.has(i)) cands.push(i);
+    // 単調な投下中は、合わせにくい中で一番大きい球を渡す
+    if (cands.length) return cands[mono || Math.random() < .6 ? cands.length - 1 : Math.random() * cands.length | 0];
+    if (mono) return mx; // 全種類が表面にあるなら一番大きい球
+  }
+  let r = Math.random() * w.reduce((a, b) => a + b), i = 0;
+  while (i < w.length - 1 && r > w[i]) { r -= w[i]; i++; }
+  return i;
+}
+function updHud() {
+  $('score').textContent = score;
+  $('best').textContent = best;
+  $('next').innerHTML = kImg(KINDS[nxt], 30);
+}
+
+function makeBall(lv, x, y, grow) {
+  return { id: uid++, lv, x, y, vx: 0, vy: 0, r: grow ? KINDS[lv].r * 0.6 : KINDS[lv].r,
+           tr: KINDS[lv].r, a: 0, age: 0, dead: false, ph: Math.random() * 6, touch: false, wob: 0, wt: 9, fx: 0 };
+}
+
+function reset() {
+  balls = []; parts = []; pops = [];
+  score = 0; maxLv = 0; dangerT = 0; overLine = false; drops = 0; recentX = []; diffStep = 0;
+  playT = 0; goldT = 0; nextGold = GOLD_STEP;
+  mode = null; graceT = 0;
+  cur = randKind(); nxt = randKind();
+  canDrop = true; dropCool = 0;
+  updHud();
+}
+
+// ===== サウンド =====
+let actx = null, muted = false;
+try { muted = localStorage.getItem('umiDropMute') === '1'; } catch (e) {}
+$('snd').textContent = muted ? '🔇' : '🔊';
+// iPhone のマナーモード（消音スイッチ）中でも鳴らす（iOS 17+）
+try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+const MASTER_VOL = .5; // 全体の音量（すべての効果音にかかる）
+let master = null;
+function audio() {
+  if (!actx) {
+    try {
+      actx = new (window.AudioContext || window.webkitAudioContext)();
+      master = actx.createGain(); master.gain.value = MASTER_VOL; master.connect(actx.destination);
+      loadSE();
+    } catch (e) { return; }
+  }
+  // suspended / interrupted（iOSで電話や画面ロック後）どちらからも復帰させる
+  if (actx.state !== 'running') { try { actx.resume(); } catch (e) {} }
+  // 古いiOS向け：ユーザー操作中に無音を1回鳴らしてオーディオを解放する
+  if (!audio.unlocked) {
+    try {
+      const b = actx.createBuffer(1, 1, 22050), s = actx.createBufferSource();
+      s.buffer = b; s.connect(actx.destination); s.start(0); audio.unlocked = true;
+    } catch (e) {}
+  }
+}
+// タッチ端末では pointerdown ではオーディオ解放されないため、指を離した時・クリック時にも呼ぶ
+['touchend', 'pointerup', 'click', 'keydown'].forEach(ev => document.addEventListener(ev, audio, { passive: true }));
+document.addEventListener('visibilitychange', () => { if (!document.hidden && actx) audio(); });
+// ===== 効果音ファイル（泡05/06）=====
+// file:// でも鳴るよう HTML に埋め込み（元ファイルは se/ フォルダ）
+const SE_DATA = {
+  awa05: 'SUQzAwAAAAAfdlRDT04AAAAFAAAAKDEyKVBSSVYAAAAOAABQZWFrVmFsdWUAIQAAAFBSSVYAAAARAABBdmVyYWdlTGV2ZWwAewQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA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HVW8YAAg3ISqfGMYlD6bQiAV56h7s6kY8wVBkVFQ2CAscP91ospEuxQRFUuQaf/NYqLGdcwQANlDUziKSeAQBwdPIEDQrMFqW7ZU/20jpfz59/rajKrHMwcOBF9RwuD4Pgc5kzXg+D9v/WFlCABWs7iIZRJoEPfhIoTAUxgIgp1a+gpUf/psv+pSzPLVkm8pS5QE//oywAUqaoAIAFtXgqzHINiEq7hTJJQEBAQEKBB26R+Iga9W/KiWSBYOywMHmFRBJWVgLMHt+EyTrDMU2kfhFjO+xhiHq0lkcLKcqbcMa0tiWWBBjlMsXIiAMJV2+LigAyJgDtCEggqKoEJoz/zidFmRozAIzMyV1VepV7Mll0vq1HXnOv/+98irf/d36reiMQ5zvyEOc/9CEIRmkP/6MMCEbHIABuR7XeKYSQDoFKt8UQlsgytTiIl0cwECQAHhBwswj0RA9JrFY+VXj/Nb4/z/u+4/z/+JTKy2lA+kBdELW+mUk5/oymn8dYm7+a+22n0BQ07f//P7iDDRUKq5eXRsAxoBwygb8LYGhYWg4wls1X7u21Z19dK08ylSxklDAURNdj37bKzpVw6WHhos9USxDEWVdq8o3//6MsC1GHuABtw5RcMkZuDxIqe4kQlwtbHSkAERGOBq6NRgs5NB1DH/Yf0NMqV1L/ldkFiTQ0VSI6FA27ucyeixVwsGqpO7m/fUo/wDy+ACxf//817/yp+dmOJGYfFwQSHh8eIGAuZB6N3s5f////Bo1f//////////////////////////////////////////////////////////+jLA0/eEgAiwgUXDGMkI7A6oPGMJIP////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////oywDW5hwAGsHMrhIxJIIWP5GQQlSX////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////6MMCThJ6AALQDFAAAAAAAACXAAAAE///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////6MsAVW94ACGABLgAAACAAACXAAAAE////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////+jLA6jb/gBDAAS4AAAAgAAAlwAAABP////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////oywOo2/4AQwAEuAAAAIAAAJcAAAAT////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////6MMAipf+AEKABLgAAACAAACXAAAAE///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////6MsDqNv+AEMABLgAAACAAACXAAAAE////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////+jLA6jb/gBDAAS4AAAAgAAAlwAAABP////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////oywOo2/4AQwAEuAAAAIAAAJcAAAAT////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////6MMAipf+AEKABLgAAACAAACXAAAAE///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////6MsDqNv+AEMABLgAAACAAACXAAAAE////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////+jLA6jb/gBDAAS4AAAAgAAAlwAAABP////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////oywOo2/4AQwAEuAAAAIAAAJcAAAAT////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////6MMAipf+AEKABLgAAACAAACXAAAAE///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////6MsDqNv+AEMABLgAAACAAACXAAAAE////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////+jLA6jb/gBDAAS4AAAAgAAAlwAAABP////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////owwCKl/4AQoAEuAAAAIAAAJcAAAAT///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////oywOo2/4AQwAEuAAAAIAAAJcAAAAT////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////6MsDqNv+AEMABLgAAACAAACXAAAAE////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////+jLA6jb/gBDAAS4AAAAgAAAlwAAABP///////////////////////////////wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//owwCKl/4AQoAEuAAAAIAAAJcAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//oywOo2/4AQwAEuAAAAIAAAJcAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/6MsDqNv+AEMABLgAAACAAACXAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABUQUcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgDA==',
+  awa06: 'SUQzAwAAAAAfdlRDT04AAAAFAAAAKDEyKVBSSVYAAAAOAABQZWFrVmFsdWUAIQAAAFBSSVYAAAARAABBdmVyYWdlTGV2ZWwAewQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA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34ivA0V5hlRG21CABNlAU721hZMRISbDKBwKAsDN4x6FnZ1VbaXEWXlZ9ClN1KIuORfrnT0RDniY3s4uVF9+1tskjZIAO0n/+jLAGOijgAf0Kz3nmGSpAKKo/GEJdKDKSg4jczASBAqk0SP5SoL5lTJEuvTQvEYoG4hCjxx585MEIoRPQES0lr/rDSmwI4GrzxXeqg67JJJ0CAJkoOiRaUOCreNBlhITwbCYMuBoOiE6VWGmho9JqPUf//MSwBAAAAAQE1uQCSAAAAEnV/////////////////////////////////oywFf8poAIXRVN4ohroP6eJ3zxCXX////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////6MMBu9qgABzgfM+eYwqD/CmX08wzk///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////6MsBt5K2ABSwdI4wkwqAgAKMQkAAF////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////+jLANF3XgAa4Ax6BAAAoAAAlwAAABP////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////oywOo2/4AQwAEuAAAAIAAAJcAAAAT////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////6MMAipf+AEKABLgAAACAAACXAAAAE///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////6MsDqNv+AEMABLgAAACAAACXAAAAE////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////+jLA6jb/gBDAAS4AAAAgAAAlwAAABP////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////owwCKl/4AQoAEuAAAAIAAAJcAAAAT///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////oywOo2/4AQwAEuAAAAIAAAJcAAAAT////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////6MsDqNv+AEMABLgAAACAAACXAAAAE////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////+jLA6jb/gBDAAS4AAAAgAAAlwAAABP////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////owwCKl/4AQoAEuAAAAIAAAJcAAAAT///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////oywOo2/4AQwAEuAAAAIAAAJcAAAAT////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////6MsDqNv+AEMABLgAAACAAACXAAAAE////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////+jLA6jb/gBDAAS4AAAAgAAAlwAAABP////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////owwCKl/4AQoAEuAAAAIAAAJcAAAAT///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////oywOo2/4AQwAEuAAAAIAAAJcAAAAT////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////6MsDqNv+AEMABLgAAACAAACXAAAAE////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////+jLA6jb/gBDAAS4AAAAgAAAlwAAABP////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////owwCKl/4AQoAEuAAAAIAAAJcAAAAT///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////oywOo2/4AQwAEuAAAAIAAAJcAAAAT///////////////////////////////8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/6MsDqNv+AEMABLgAAACAAACXAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/+jDAIqX/gBCgAS4AAAAgAAAlwAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/+jLA6jb/gBDAAS4AAAAgAAAlwAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVEFHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAw=',
+};
+const SE_OFS = { awa05: .075, awa06: .08 }; // 頭の無音を飛ばす
+const seBuf = {};
+function loadSE() {
+  for (const k in SE_DATA) {
+    const bin = atob(SE_DATA[k]), u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    try {
+      const r = actx.decodeAudioData(u8.buffer, b => { seBuf[k] = b; }, err => console.warn('SE decode failed', k, err));
+      if (r && r.catch) r.catch(() => {});
+    } catch (e) { console.warn('SE decode error', k, e); }
+  }
+}
+function playSE(k, vol = 1, rate = 1, maxDur = 0) {
+  if (muted || !actx || !seBuf[k]) return null;
+  const t = actx.currentTime, src = actx.createBufferSource(), g = actx.createGain();
+  src.buffer = seBuf[k]; src.playbackRate.value = rate;
+  g.gain.setValueAtTime(vol, t);
+  src.connect(g).connect(master); src.start(t, SE_OFS[k]);
+  if (maxDur) { g.gain.setValueAtTime(vol, t + maxDur * .6); g.gain.linearRampToValueAtTime(0, t + maxDur); src.stop(t + maxDur + .02); }
+  return { src, g };
+}
+function tone(f0, f1, dur, type = 'sine', vol = .25) {
+  if (muted || !actx) return;
+  const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.setValueAtTime(f0, t);
+  o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+  o.connect(g).connect(master); o.start(t); o.stop(t + dur + .02);
+}
+function sMerge(lv) {
+  const f = 900 - lv * 55;
+  tone(f * .6, f * 1.6, .16, 'sine', .28);
+  setTimeout(() => tone(f, f * 2, .1, 'triangle', .12), 50);
+}
+function sBig() { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, f * 1.01, .25, 'triangle', .2), i * 90)); }
+function sWhoosh() {
+  if (muted || !actx) return;
+  const t = actx.currentTime, len = 1.4, buf = actx.createBuffer(1, actx.sampleRate * len, actx.sampleRate);
+  const d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const src = actx.createBufferSource(), bp = actx.createBiquadFilter(), g = actx.createGain();
+  src.buffer = buf; bp.type = 'bandpass'; bp.Q.value = 1.2;
+  bp.frequency.setValueAtTime(300, t); bp.frequency.exponentialRampToValueAtTime(2200, t + .5); bp.frequency.exponentialRampToValueAtTime(400, t + len);
+  g.gain.setValueAtTime(.001, t); g.gain.exponentialRampToValueAtTime(.35, t + .3); g.gain.exponentialRampToValueAtTime(.001, t + len);
+  src.connect(bp).connect(g).connect(master); src.start(t);
+  [784, 988, 1175].forEach((f, i) => setTimeout(() => tone(f, f, .18, 'triangle', .12), 150 + i * 110));
+}
+// 接触：弱い接触・小さい球は泡05、強い接触・大きい球は泡06。小さい球ほど高い音
+let contactT = 0;
+function sContact(v, b) {
+  const now = performance.now(); if (now - contactT < 70) return; contactT = now;
+  const strong = v > 230 || b.lv >= 6;
+  const rate = Math.max(.6, 1.35 - b.lv * .07) * (.94 + Math.random() * .12);
+  playSE(strong ? 'awa06' : 'awa05', Math.min(.9, .2 + v / 500), rate);
+}
+function sDeep(dur) {
+  if (muted || !actx) return;
+  const t = actx.currentTime, buf = actx.createBuffer(1, actx.sampleRate * dur, actx.sampleRate);
+  const d = buf.getChannelData(0); let last = 0;
+  for (let i = 0; i < d.length; i++) { last = last * .97 + (Math.random() * 2 - 1) * .03; d[i] = last * 6; } // 低いゴーッという音
+  const src = actx.createBufferSource(), lp = actx.createBiquadFilter(), g = actx.createGain();
+  src.buffer = buf; lp.type = 'lowpass'; lp.frequency.setValueAtTime(220, t); lp.frequency.linearRampToValueAtTime(700, t + 1.2);
+  lp.frequency.linearRampToValueAtTime(350, t + dur);
+  g.gain.setValueAtTime(.001, t); g.gain.linearRampToValueAtTime(.5, t + .8);
+  g.gain.setValueAtTime(.5, t + dur - 1.3); g.gain.linearRampToValueAtTime(.001, t + dur);
+  src.connect(lp).connect(g).connect(master); src.start(t);
+  tone(110, 55, 1.2, 'sawtooth', .12);
+}
+function sShine() {
+  [523, 659, 784, 988, 1175, 1319, 1568].forEach((f, i) => setTimeout(() => tone(f, f, .35, 'triangle', .13), i * 70));
+}
+function sShineClear() {
+  playSE('awa06', .9, 1.2);
+  [1047, 1319, 1568, 2093].forEach((f, i) => setTimeout(() => tone(f, f, .3, 'sine', .14), i * 60));
+}
+function sOver() { [392, 330, 262, 196].forEach((f, i) => setTimeout(() => tone(f, f * .98, .3, 'square', .08), i * 160)); }
+$('snd').addEventListener('click', e => {
+  e.stopPropagation(); muted = !muted; audio();
+  $('snd').textContent = muted ? '🔇' : '🔊';
+  if (!muted) setTimeout(() => playSE('awa05', .8), 60); // 音が出るか確認用
+  try { localStorage.setItem('umiDropMute', muted ? '1' : '0'); } catch (e) {}
+});
+
+// ===== 入力 =====
+let touching = false;
+function toWorldX(cx) { const r = cv.getBoundingClientRect(); return (cx - r.left) / r.width * W; }
+function clampX(x) { const r = KINDS[cur].r; return Math.max(r + 2, Math.min(W - r - 2, x)); }
+cv.addEventListener('pointerdown', e => {
+  if (!running) return;
+  audio(); touching = true; dropX = clampX(toWorldX(e.clientX));
+  cv.setPointerCapture && cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointermove', e => { if (running && touching) dropX = clampX(toWorldX(e.clientX)); });
+cv.addEventListener('pointerup', e => {
+  if (!running || !touching) return;
+  touching = false; dropX = clampX(toWorldX(e.clientX)); drop();
+});
+cv.addEventListener('pointercancel', () => { touching = false; });
+document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+document.addEventListener('gesturestart', e => e.preventDefault());
+
+function drop() {
+  if (!canDrop) return;
+  const b = makeBall(cur, clampX(dropX), DROP_Y, false);
+  b.vy = 20;
+  // 通常時は難易度に応じて潮の流れで少し横に流される
+  if (!mode) {
+    b.vx = (Math.random() - .5) * difficulty() * 14;
+    b.swayK = 1 + difficulty() * .25;
+    // 意地悪：同じ場所ばかりに落とすと、球が転がらずその場に積み上がる
+    b.sticky = monotony() === 1;
+  }
+  drops++; recentX.push(b.x); if (recentX.length > 8) recentX.shift();
+  b.shine = !!(mode && mode.k === 'shine'); // シャインタイム中に落とした球
+  balls.push(b);
+  canDrop = false; dropCool = .55;
+  cur = nxt; nxt = randKind();
+  dropX = clampX(dropX);
+  updHud();
+  effectLottery();
+}
+
+// ===== 物理 =====
+function merge(a, b) {
+  a.dead = b.dead = true;
+  const x = (a.x + b.x) / 2, y = (a.y + b.y) / 2, lv = a.lv;
+  bubbleBurst(x, y, KINDS[lv].c, KINDS[lv].r);
+  if (lv === MAX) {
+    score += 200; pops.push({ x, y, t: 0, s: '+200 🎉' });
+    sBig(); return;
+  }
+  const n = makeBall(lv + 1, x, y, true);
+  n.vx = (a.vx + b.vx) / 2; n.vy = (a.vy + b.vy) / 2 - 110; n.age = 1; n.wob = .16; n.wt = 0;
+  balls.push(n);
+  const pts = (lv + 2) * (lv + 3) / 2;
+  score += pts;
+  pops.push({ x, y, t: 0, s: '+' + pts });
+  if (lv + 1 > maxLv) maxLv = lv + 1;
+  if (lv + 1 >= 8) sBig(); else sMerge(lv);
+  updHud();
+}
+
+function impact(b, v, x, y) {
+  // 強くぶつかったら、ぷるんと揺れて泡が出る
+  if (v > 70 && b.wob < .12) { b.wob = Math.min(.14, v / 1800); b.wt = 0; }
+  if (v > 90 && b.fx <= 0) { b.fx = .25; puff(x, y, Math.min(5, 1 + v / 90 | 0)); if (running) sContact(v, b); }
+}
+function physics(dt) {
+  const P = curPhys(), SUB = 8, h = dt / SUB, damp = Math.exp(-P.drag * h);
+  for (let s = 0; s < SUB; s++) {
+    for (const b of balls) {
+      if (b.r < b.tr) b.r = Math.min(b.tr, b.r + b.tr * 3 * h);
+      b.vy += P.g * h;
+      // 何にも触れずに沈んでいる間は、ゆらゆら左右に揺れる
+      if (!b.touch && P.sway) b.vx += Math.sin(b.age * 2.4 + b.ph) * P.sway * (b.swayK || 1) * h;
+      b.vx *= damp; b.vy *= damp;
+      b.x += b.vx * h; b.y += b.vy * h;
+      b.touch = false;
+    }
+    const n = balls.length;
+    for (let i = 0; i < n; i++) {
+      const a = balls[i]; if (a.dead) continue;
+      for (let j = i + 1; j < n; j++) {
+        const b = balls[j]; if (b.dead) continue;
+        const dx = b.x - a.x, dy = b.y - a.y, rs = a.r + b.r, d2 = dx * dx + dy * dy;
+        if (d2 >= rs * rs || d2 === 0) continue;
+        if (a.lv === b.lv && running) {
+          // シャインタイム中に落とした球が同じ球に触れたら、盤面の同じ球を全部消す
+          if ((a.shine || b.shine) && mode && mode.k === 'shine') shineClear(a.lv);
+          else merge(a, b);
+          break;
+        }
+        a.touch = b.touch = true;
+        if ((a.sticky || b.sticky) && !mode) { const k = .92; if (a.sticky) { a.vx *= k; } if (b.sticky) { b.vx *= k; } }
+        const d = Math.sqrt(d2), nx = dx / d, ny = dy / d, ov = rs - d;
+        const ma = a.r * a.r, mb = b.r * b.r, im = 1 / (ma + mb);
+        a.x -= nx * ov * mb * im; a.y -= ny * ov * mb * im;
+        b.x += nx * ov * ma * im; b.y += ny * ov * ma * im;
+        const rvx = b.vx - a.vx, rvy = b.vy - a.vy, vn = rvx * nx + rvy * ny;
+        if (vn < 0) {
+          // 小さな速度では跳ねさせない（積み上がりがプルプルしないように）
+          const e = vn < -P.th ? P.e : 0;
+          const jn = -(1 + e) * vn / (1 / ma + 1 / mb);
+          a.vx -= jn / ma * nx; a.vy -= jn / ma * ny;
+          b.vx += jn / mb * nx; b.vy += jn / mb * ny;
+          const tx = -ny, ty = nx, vt = rvx * tx + rvy * ty;
+          const fr = (a.sticky || b.sticky) && !mode ? .5 : P.fr;
+          const jt = -vt * fr / (1 / ma + 1 / mb);
+          a.vx -= jt / ma * tx; a.vy -= jt / ma * ty;
+          b.vx += jt / mb * tx; b.vy += jt / mb * ty;
+          const cx = a.x + nx * a.r, cy = a.y + ny * a.r;
+          impact(a, -vn, cx, cy); impact(b, -vn, cx, cy);
+        }
+      }
+    }
+    for (const b of balls) {
+      if (b.dead) continue;
+      if (b.x - b.r < 0) { b.x = b.r; if (b.vx < 0) { impact(b, -b.vx, 0, b.y); b.vx *= -P.e; } b.touch = true; }
+      if (b.x + b.r > W) { b.x = W - b.r; if (b.vx > 0) { impact(b, b.vx, W, b.y); b.vx *= -P.e; } b.touch = true; }
+      // 天井（スコア表示の下）：スーパーボール時に画面外へ飛ばないように
+      if (b.y - b.r < HUD_H) { b.y = HUD_H + b.r; if (b.vy < 0) { impact(b, -b.vy, b.x, HUD_H); b.vy *= -P.e; } }
+      if (b.y + b.r > FLOOR) {
+        b.y = FLOOR - b.r; b.touch = true;
+        if (b.vy > 0) { impact(b, b.vy, b.x, FLOOR); b.vy *= b.vy > P.th ? -P.e : 0; }
+        b.vx *= P === PHYS.rush ? 1 : 0.99;
+      }
+    }
+    if (balls.some(b => b.dead)) balls = balls.filter(b => !b.dead);
+  }
+  for (const b of balls) {
+    b.fx -= dt; b.wt += dt;
+    // 速く沈んでいる間は小さな泡の尾を引く
+    if (!b.touch && b.vy > 140 && Math.random() < dt * 14) parts.push(bubble(b.x + (Math.random() - .5) * b.r, b.y - b.r * .8, 1.2 + Math.random() * 2.5, 0, -20));
+  }
+}
+
+// ===== エフェクト =====
+// 泡の粒：ゆらゆら昇って最後にパチンと弾ける
+function bubble(x, y, r, vx, vy, tint) {
+  return { k: 'bub', x, y, r, vx, vy, life: 0, max: .5 + Math.random() * 1.1, ph: Math.random() * 6, tint };
+}
+function popRing(x, y, r, tint) {
+  parts.push({ k: 'ring', x, y, r, life: 0, max: .18 + r * .004, tint });
+  const m = r > 6 ? 4 : 2;
+  for (let i = 0; i < m; i++) {
+    const a = Math.random() * 6.28, sp = 40 + Math.random() * 60;
+    parts.push({ k: 'drop', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: .8 + Math.random() * 1.2, life: 0, max: .25 });
+  }
+}
+function puff(x, y, n) {
+  for (let i = 0; i < n; i++)
+    parts.push(bubble(x + (Math.random() - .5) * 12, y + (Math.random() - .5) * 8, 1.5 + Math.random() * 3.5, (Math.random() - .5) * 50, -30 - Math.random() * 50));
+}
+// 合体：球体の膜が大きく弾けて、中から泡があふれ出す
+function bubbleBurst(x, y, col, r) {
+  parts.push({ k: 'shell', x, y, r, life: 0, max: .35, tint: col });
+  const n = 14 + (r / 3 | 0);
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * 6.28, d = Math.random() * r * .9, sp = 40 + Math.random() * 140;
+    parts.push(bubble(x + Math.cos(a) * d, y + Math.sin(a) * d, 2 + Math.random() * (4 + r * .08),
+      Math.cos(a) * sp, Math.sin(a) * sp - 60, Math.random() < .35 ? col : null));
+  }
+  for (let i = 0; i < 12; i++) {
+    const a = i / 12 * 6.28, sp = 120 + Math.random() * 80;
+    parts.push({ k: 'drop', x: x + Math.cos(a) * r, y: y + Math.sin(a) * r, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 1.2 + Math.random() * 1.5, life: 0, max: .35 });
+  }
+}
+function updParts(dt) {
+  for (const p of parts) {
+    p.life += dt;
+    if (p.k === 'bub') {
+      p.vx *= Math.exp(-2.5 * dt); p.vy = p.vy * Math.exp(-2.5 * dt) - 90 * dt; // 抵抗＋浮力
+      p.x += (p.vx + Math.sin(p.life * 9 + p.ph) * 14) * dt; p.y += p.vy * dt;
+      if (p.life >= p.max) popRing(p.x, p.y, p.r, p.tint);
+    } else if (p.k === 'drop' || p.k === 'star') {
+      p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .9; p.vy *= .9;
+    }
+  }
+  parts = parts.filter(p => p.life < p.max);
+  if (parts.length > 500) parts.splice(0, parts.length - 500);
+}
+function drawParts() {
+  ctx.save();
+  for (const p of parts) {
+    const t = p.life / p.max;
+    if (p.k === 'bub') {
+      const r = p.r * (1 + Math.sin(p.life * 12 + p.ph) * .06);
+      ctx.globalAlpha = Math.min(1, p.life * 8);
+      ctx.fillStyle = p.tint ? p.tint + '33' : 'rgba(200,240,255,.14)';
+      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill();
+      ctx.lineWidth = Math.max(.8, r * .14); ctx.strokeStyle = 'rgba(235,250,255,.85)'; ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,.95)';
+      ctx.beginPath(); ctx.arc(p.x - r * .38, p.y - r * .38, Math.max(.6, r * .22), 0, 7); ctx.fill();
+    } else if (p.k === 'ring') {
+      ctx.globalAlpha = 1 - t;
+      ctx.lineWidth = 1.2; ctx.strokeStyle = 'rgba(235,250,255,.9)';
+      ctx.setLineDash([2, 3]);
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1 + t * 1.2), 0, 7); ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (p.k === 'shell') {
+      // 大きな泡の膜が広がりながら消える
+      const e = 1 - (1 - t) * (1 - t);
+      ctx.globalAlpha = (1 - t) * .9;
+      ctx.lineWidth = 3 * (1 - t) + .5; ctx.strokeStyle = '#eafaff';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1 + e * .5), 0, 7); ctx.stroke();
+      ctx.globalAlpha = (1 - t) * .35; ctx.fillStyle = p.tint;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1 + e * .5), 0, 7); ctx.fill();
+    } else if (p.k === 'star') {
+      drawStar(p.x, p.y, p.r * (1 - t * .5), 1 - t);
+    } else {
+      ctx.globalAlpha = 1 - t; ctx.fillStyle = '#eafaff';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+// 背景の泡
+const bgBubbles = Array.from({ length: 22 }, () => newBg(true));
+function newBg(init) {
+  return { x: Math.random() * W, y: init ? Math.random() * H : H + 10, r: 1.5 + Math.random() * 4,
+           sp: 20 + Math.random() * 40, ph: Math.random() * 6 };
+}
+// ===== 背景画像 =====
+// 時間経過で 夜→夜明け→昼→夕方→夜… と巡回。得点の節目で一定時間だけ黄金の海に。
+const BG_FILES = ['bg/1-night.jpg', 'bg/2-dawn.jpg', 'bg/3-day.jpg', 'bg/4-sunset.jpg'];
+const BG_GOLD = BG_FILES.length;       // 黄金背景のインデックス
+const BG_STAGE_SEC = 45;               // 1つの時間帯の長さ（秒）
+const GOLD_STEP = 10000;                 // この点数ごとに黄金背景
+const GOLD_SEC = 8;                    // 黄金背景を表示する秒数
+const FADE_SEC = 2.5;                  // 切り替えのクロスフェード秒数
+const bgImgs = [...BG_FILES, 'bg/5-gold.jpg'].map(src => { const im = new Image(); im.src = src; return im; });
+let bgFrom = 0, bgTo = 0, bgFade = 1, playT = 0, goldT = 0, nextGold = GOLD_STEP;
+
+function bgTarget() {
+  if (goldT > 0) return BG_GOLD;
+  return Math.floor(playT / BG_STAGE_SEC) % BG_FILES.length;
+}
+function updBg(dt) {
+  const t = bgTarget();
+  if (t !== bgTo) { bgFrom = bgFade >= .5 ? bgTo : bgFrom; bgTo = t; bgFade = 0; }
+  bgFade = Math.min(1, bgFade + dt / FADE_SEC);
+}
+function drawImgCover(im, alpha) {
+  if (!im.complete || !im.naturalWidth || alpha <= 0) return;
+  const s = Math.max(W / im.naturalWidth, H / im.naturalHeight);
+  const iw = im.naturalWidth * s, ih = im.naturalHeight * s;
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(im, (W - iw) / 2, H - ih, iw, ih); // 下（砂地）基準で合わせる
+  ctx.globalAlpha = 1;
+}
+
+// ===== 背景エフェクト：泳ぐ魚 =====
+// 画像はすべて右向き。w は奥行き1.0のときの表示幅（ワールド座標）
+const FISH_DEF = {
+  sora:     { src: 'fish/sora1.png',     w: 52, wag: 8 },
+  nanyo:    { src: 'fish/nanyo1.png',    w: 78, wag: 6 },
+  hata:     { src: 'fish/hata1.png',     w: 96, wag: 5 },
+  royal:    { src: 'fish/royal1.png',    w: 44, wag: 9 },
+  aigo:     { src: 'fish/aigo1.png',     w: 56, wag: 7 },
+  bera:     { src: 'fish/bera1.png',     w: 70, wag: 8 },
+  mandarin: { src: 'fish/mandarin1.png', w: 64, wag: 6 },
+  iwashi1:  { src: 'fish/iwashi1.png',   w: 42, wag: 15 },
+  iwashi2:  { src: 'fish/iwashi2.png',   w: 40, wag: 15 },
+  iwashi4:  { src: 'fish/iwashi4.png',   w: 38, wag: 15 },
+  // 群泳ラッシュ用（紫・黄色のクマノミ、真ん中に金色の1匹）
+  kuma_p1:  { src: 'fish/kuma_p1.png',   w: 50, wag: 11 },
+  kuma_p2:  { src: 'fish/kuma_p2.png',   w: 50, wag: 11 },
+  kuma_p3:  { src: 'fish/kuma_p3.png',   w: 51, wag: 11 },
+  kuma_y1:  { src: 'fish/kuma_y1.png',   w: 36, wag: 12 },
+  kuma_y2:  { src: 'fish/kuma_y2.png',   w: 36, wag: 12 },
+  kuma_y3:  { src: 'fish/kuma_y3.png',   w: 35, wag: 12 },
+  kuma_gold:{ src: 'fish/kuma_gold.png', w: 50, wag: 11 },
+};
+for (const k in FISH_DEF) { const im = new Image(); im.src = FISH_DEF[k].src; FISH_DEF[k].img = im; }
+const AMBIENT = ['sora', 'nanyo', 'hata', 'royal', 'aigo', 'bera', 'mandarin', 'sora', 'royal', 'aigo'];
+const IWASHI = ['iwashi1', 'iwashi2', 'iwashi4'];
+const KUMA = ['kuma_p1', 'kuma_y1', 'kuma_p2', 'kuma_y2', 'kuma_p3', 'kuma_y3'];
+let fishes = [], ambT = .5;
+
+function spawnFish(kind, o = {}) {
+  const d = FISH_DEF[kind];
+  const depth = o.depth ?? (.55 + Math.random() * .45);
+  const dir = o.dir ?? (Math.random() < .5 ? 1 : -1);
+  const w = d.w * depth * (o.scale || 1);
+  const speed = (o.speed ?? (22 + Math.random() * 28)) * (.6 + depth * .4);
+  fishes.push({ d, dir, w, depth, amb: !!o.amb, grp: o.grp ?? -1,
+    x: o.x ?? (dir > 0 ? -w : W + w), y: o.y ?? (140 + HUD_H + Math.random() * (FLOOR - 220 - HUD_H)),
+    vx: dir * speed, ph: Math.random() * 6, t: 0,
+    bob: o.bob ?? (3 + Math.random() * 6), alpha: o.alpha ?? (.4 + depth * .5) });
+}
+// 小さい魚（SMALL_W 以下）は1〜3匹の群れで泳がせる
+const SMALL_W = 56;
+let grpId = 0;
+function spawnAmbient(kind) {
+  const grp = grpId++;
+  if (FISH_DEF[kind].w > SMALL_W) { spawnFish(kind, { amb: true, grp }); return; }
+  const n = 1 + Math.floor(Math.random() * 3); // 1〜3匹
+  const dir = Math.random() < .5 ? 1 : -1, depth = .6 + Math.random() * .4;
+  const speed = 26 + Math.random() * 24, y0 = 150 + HUD_H + Math.random() * (FLOOR - 240 - HUD_H);
+  const w = FISH_DEF[kind].w * depth;
+  for (let i = 0; i < n; i++) {
+    const back = i * w * (.9 + Math.random() * .5);              // 先頭の後ろについていく
+    const x = dir > 0 ? -w - back : W + w + back;
+    const y = y0 + (i === 0 ? 0 : (i % 2 ? -1 : 1) * (12 + Math.random() * 14) * depth);
+    spawnFish(kind, { amb: true, grp, dir, depth, scale: .9 + Math.random() * .15, speed, x, y });
+  }
+}
+// 群れ：イワシ／クマノミの大群が右から左へ駆け抜ける
+// 群れが右から左へ駆け抜ける
+//  イワシ（通常モードの背景演出）… fishSchool(big)
+//  クマノミ（群泳ラッシュ中）       … fishSchool(big, true)
+function fishSchool(big, reach) {
+  const kinds = reach ? KUMA : IWASHI;
+  const n = reach ? (big ? 75 : 45) : (big ? 120 : 65);
+  const len = big ? 480 : 300, cy = 200 + HUD_H + Math.random() * (FLOOR - 380 - HUD_H);
+  for (let i = 0; i < n; i++) {
+    const dx = Math.random() * len;
+    const g = (Math.random() + Math.random() + Math.random() - 1.5) / 1.5; // 中央に寄った分布
+    const thick = (big ? 105 : 80) * Math.sin(Math.PI * Math.min(1, dx / len + .05)) + 15; // 先頭と最後尾は細く
+    spawnFish(kinds[i % kinds.length], { dir: -1, x: W + 30 + dx, y: cy + g * thick + Math.sin(dx / 70) * 25,
+      depth: .75 + Math.random() * .3, scale: reach ? 1 : 1.2, speed: 230 + Math.random() * 30, bob: 2, alpha: reach ? 1 : .92 });
+  }
+  // 群れの真ん中に金色のクマノミを1匹
+  if (reach) spawnFish('kuma_gold', { dir: -1, x: W + 30 + len * .5, y: cy, depth: 1.05, scale: 1.1, speed: 245, bob: 2, alpha: 1 });
+  sWhoosh();
+}
+// 大物パレード（得点の節目）
+function fishParade() {
+  const kinds = ['hata', 'nanyo', 'mandarin', 'bera', 'royal', 'sora', 'aigo'];
+  const cy = 260 + HUD_H + Math.random() * 120;
+  kinds.forEach((k, i) => spawnFish(k, { dir: 1, x: -80 - i * 95, y: cy + Math.sin(i * 1.3) * 45,
+    depth: 1, scale: 1.25, speed: 110, bob: 5, alpha: 1 }));
+}
+function updFish(dt) {
+  if ((ambT -= dt) <= 0) {
+    ambT = 1.5 + Math.random() * 3;
+    if (new Set(fishes.filter(f => f.amb).map(f => f.grp)).size < 4) spawnAmbient(AMBIENT[Math.random() * AMBIENT.length | 0]);
+  }
+  for (const f of fishes) { f.t += dt; f.x += (f.vx + ki * 260 * f.depth) * dt; }
+  fishes = fishes.filter(f => f.dir > 0 ? f.x < W + f.w : f.x > -f.w);
+}
+function drawFish(f) {
+  const im = f.d.img; if (!im.complete || !im.naturalWidth) return;
+  const iw = im.naturalWidth, ih = im.naturalHeight, w = f.w, h = w * ih / iw;
+  ctx.save();
+  ctx.globalAlpha = f.alpha;
+  ctx.translate(f.x, f.y + Math.sin(f.t * 1.6 + f.ph) * f.bob);
+  if (f.dir < 0) ctx.scale(-1, 1);
+  ctx.rotate(Math.cos(f.t * 1.6 + f.ph) * .06);
+  // 縦の短冊に切って尾びれ側ほど大きく波打たせる
+  const N = 8, sw = iw / N, dw = w / N;
+  for (let i = 0; i < N; i++) {
+    const u = 1 - i / (N - 1);
+    const dy = Math.sin(f.t * f.d.wag + f.ph - i * .7) * h * .08 * u * u;
+    const sx = i * sw, sWid = Math.min(sw + 1, iw - sx);
+    ctx.drawImage(im, sx, 0, sWid, ih, -w / 2 + i * dw, -h / 2 + dy, dw + .6, h);
+  }
+  ctx.restore();
+}
+function drawFishes() {
+  fishes.sort((a, b) => a.depth - b.depth);
+  for (const f of fishes) drawFish(f);
+}
+
+// ===== 特別演出：深潮 / 群泳ラッシュ / シャインタイム =====
+function startMode(k, big) {
+  if (mode || !running) return;
+  mode = { k, t: 0, dur: k === 'deep' ? DEEP_SEC : k === 'shine' ? SHINE_SEC : RUSH_SEC, big, wave2: false };
+  if (k === 'deep') { shakeT = .7; sDeep(DEEP_SEC); }
+  else if (k === 'shine') {
+    // 待機中・ネクストの球もクマノミまでに差し替える
+    if (cur > SHINE_DROP_MAX) cur = randKind();
+    if (nxt > SHINE_DROP_MAX) nxt = randKind();
+    updHud(); sShine();
+  }
+  else {
+    fishSchool(true, true);
+    // 盤面の球を一斉に跳ね上げる
+    for (const b of balls) { b.vy -= 380 + Math.random() * 380; b.vx += (Math.random() - .5) * 320; b.wob = .14; b.wt = 0; }
+    shakeT = .35;
+  }
+}
+function updMode(dt) {
+  shakeT = Math.max(0, shakeT - dt);
+  if (graceT > 0) graceT -= dt;
+  if (mode) {
+    mode.t += dt;
+    if (mode.k === 'rush' && !mode.wave2 && mode.t > mode.dur * .5) { mode.wave2 = true; fishSchool(false, true); }
+    if (mode.t >= mode.dur || !running) {
+      if (mode.k === 'rush') graceT = RUSH_GRACE;
+      mode = null;
+    }
+  }
+  // 深潮の強さ（フェードイン0.8秒／フェードアウト1.2秒）
+  const target = mode && mode.k === 'deep' && mode.t < mode.dur - 1.2 ? 1 : 0;
+  ki += (target - ki) * Math.min(1, dt * (target ? 1.25 : .9) * 3);
+  if (ki < .003) ki = 0;
+  updStreaks(dt);
+}
+// シャインタイム：同じ種類の球をまとめて消す
+function shineClear(lv) {
+  const hit = balls.filter(b => !b.dead && b.lv === lv);
+  for (const b of hit) {
+    b.dead = true;
+    bubbleBurst(b.x, b.y, KINDS[lv].c, b.r);
+    sparkle(b.x, b.y, 10);
+  }
+  const pts = hit.length * (lv + 2) * (lv + 3);
+  score += pts;
+  const cx = hit.reduce((a, b) => a + b.x, 0) / hit.length, cy = hit.reduce((a, b) => a + b.y, 0) / hit.length;
+  pops.push({ x: cx, y: cy, t: 0, s: `+${pts}（${hit.length}個）` });
+  sShineClear(); updHud();
+}
+function sparkle(x, y, n) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * 6.28, sp = 60 + Math.random() * 160;
+    parts.push({ k: 'star', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 3 + Math.random() * 4, life: 0, max: .6 + Math.random() * .4 });
+  }
+}
+// キャラの出入り（0=画面下に隠れている, 1=定位置）
+function shineRise() {
+  if (!mode || mode.k !== 'shine') return 0;
+  const inn = Math.min(1, mode.t / 1.3), out = Math.min(1, (mode.dur - mode.t) / 1.0);
+  const e = 1 - Math.pow(1 - inn, 3);
+  return Math.max(0, Math.min(e, out * out));
+}
+function drawShine() {
+  const r = shineRise(); if (r <= 0) return;
+  const im = shineImg; if (!im.complete || !im.naturalWidth) return;
+  const baseY = lineY();                                        // 定位置：頭のてっぺんがボーダーラインに届く
+  const dh = H + 40 - baseY, dw = dh * im.naturalWidth / im.naturalHeight; // 足元は画面下で切れる
+  const y = baseY + (1 - r) * (dh + 40) + Math.sin(time * 1.8) * 5; // 下からせり上がる
+  const cx = W / 2, gy = y + dh * .35;
+  ctx.save();
+  // 後光
+  ctx.globalAlpha = r * .9;
+  const g = ctx.createRadialGradient(cx, gy, 20, cx, gy, 260);
+  g.addColorStop(0, 'rgba(255,240,200,.75)'); g.addColorStop(.45, 'rgba(255,170,210,.35)'); g.addColorStop(1, 'rgba(255,170,210,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // 回転する光の筋
+  ctx.save(); ctx.translate(cx, gy); ctx.rotate(time * .35);
+  ctx.fillStyle = 'rgba(255,245,220,.16)';
+  for (let i = 0; i < 12; i++) {
+    ctx.rotate(Math.PI / 6);
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-18, -300); ctx.lineTo(18, -300); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+  // キャラ
+  ctx.globalAlpha = Math.min(1, r * 1.5);
+  ctx.drawImage(im, cx - dw / 2, y, dw, dh);
+  // きらきら
+  for (let i = 0; i < 16; i++) {
+    const a = i * 2.39996 + time * .6, d = 90 + (i * 37 % 120);
+    const sx = cx + Math.cos(a) * d * 1.1, sy = gy + Math.sin(a) * d * 1.3;
+    const tw = (Math.sin(time * 5 + i * 1.7) + 1) / 2;
+    drawStar(sx, sy, 3 + tw * 5, r * tw);
+  }
+  ctx.restore();
+}
+function drawStar(x, y, s, a) {
+  if (a <= .02) return;
+  ctx.globalAlpha = a; ctx.fillStyle = '#fffbe6';
+  ctx.beginPath(); ctx.moveTo(x, y - s); ctx.quadraticCurveTo(x, y, x + s, y); ctx.quadraticCurveTo(x, y, x, y + s);
+  ctx.quadraticCurveTo(x, y, x - s, y); ctx.quadraticCurveTo(x, y, x, y - s); ctx.fill();
+}
+// 深潮の流れの筋
+let streaks = [];
+function newStreak(init) {
+  const band = Math.random() < .7;
+  const cy = HUD_H + (FLOOR - HUD_H) * .45;
+  return { x: init ? Math.random() * W : -Math.random() * 300, y: band ? cy + (Math.random() - .5) * 260 : HUD_H + Math.random() * (FLOOR - HUD_H),
+    len: 60 + Math.random() * 200, sp: 550 + Math.random() * 650, w: .8 + Math.random() * 2.2, a: .25 + Math.random() * .5, ph: Math.random() * 6 };
+}
+function updStreaks(dt) {
+  if (ki <= 0) { streaks.length = 0; return; }
+  while (streaks.length < 55) streaks.push(newStreak(streaks.length < 30));
+  for (let i = 0; i < streaks.length; i++) {
+    const s = streaks[i]; s.x += s.sp * dt;
+    if (s.x - s.len > W) streaks[i] = newStreak(false);
+  }
+}
+function drawDeep() {
+  if (ki <= 0) return;
+  const cy = HUD_H + (FLOOR - HUD_H) * .45;
+  ctx.save();
+  // 海が一気に深い藍色へ
+  ctx.globalAlpha = ki * .22; ctx.fillStyle = '#00081e'; ctx.fillRect(0, 0, W, H);
+  // 深潮の本流：うねりながら画面を横切る帯
+  ctx.globalAlpha = ki;
+  const g = ctx.createLinearGradient(0, cy - 170, 0, cy + 170);
+  g.addColorStop(0, 'rgba(10,50,130,0)'); g.addColorStop(.28, 'rgba(15,80,180,.2)');
+  g.addColorStop(.5, 'rgba(50,150,255,.28)'); g.addColorStop(.72, 'rgba(15,80,180,.2)'); g.addColorStop(1, 'rgba(10,50,130,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  for (let x = 0; x <= W; x += 10) ctx.lineTo(x, cy - 135 + Math.sin(x * .02 - time * 6) * 20);
+  for (let x = W; x >= 0; x -= 10) ctx.lineTo(x, cy + 135 + Math.sin(x * .025 - time * 5 + 1) * 20);
+  ctx.closePath(); ctx.fill();
+  // 帯の中を流れる白いうねり
+  ctx.lineWidth = 2;
+  for (let k = 0; k < 6; k++) {
+    ctx.strokeStyle = `rgba(190,235,255,${.12 + .1 * (k % 2)})`;
+    ctx.beginPath();
+    for (let x = 0; x <= W; x += 8) ctx.lineTo(x, cy - 100 + k * 40 + Math.sin(x * .03 - time * 10 + k * 1.3) * 9);
+    ctx.stroke();
+  }
+  // 高速で流れる筋
+  ctx.lineCap = 'round';
+  for (const s of streaks) {
+    const y = s.y + Math.sin(s.x * .02 + s.ph) * 6;
+    const lg = ctx.createLinearGradient(s.x - s.len, 0, s.x, 0);
+    lg.addColorStop(0, 'rgba(160,225,255,0)'); lg.addColorStop(1, `rgba(220,245,255,${s.a})`);
+    ctx.strokeStyle = lg; ctx.lineWidth = s.w;
+    ctx.beginPath(); ctx.moveTo(s.x - s.len, y); ctx.lineTo(s.x, y); ctx.stroke();
+  }
+  // 周囲を暗く絞る
+  const v = ctx.createRadialGradient(W / 2, cy, 120, W / 2, cy, H * .75);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,4,16,.35)');
+  ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
+// ===== 描画 =====
+function drawBg() {
+  ctx.fillStyle = '#063456'; ctx.fillRect(0, 0, W, H);
+  drawImgCover(bgImgs[bgFrom], 1);
+  drawImgCover(bgImgs[bgTo], bgFade);
+  // 生き物が見やすいよう軽く暗くする
+  ctx.fillStyle = 'rgba(0,15,35,.18)'; ctx.fillRect(0, 0, W, H);
+  drawFishes();
+  drawDeep();
+  drawShine();
+  // 床の目安
+  ctx.fillStyle = 'rgba(255,240,210,.18)'; ctx.fillRect(0, FLOOR, W, H - FLOOR);
+  // 泡
+  ctx.fillStyle = 'rgba(220,245,255,.35)';
+  for (const b of bgBubbles) {
+    ctx.beginPath(); ctx.arc(b.x + Math.sin(time * 2 + b.ph) * 3, b.y, b.r, 0, 7); ctx.fill();
+  }
+}
+
+function drawBall(b, alpha = 1) {
+  const k = KINDS[b.lv], r = b.r;
+  // シャインタイム中は球を透かして、後ろのキャラが見えるようにする
+  ctx.save(); ctx.globalAlpha = alpha * (1 - SHINE_BALL_FADE * shineRise()); ctx.translate(b.x, b.y);
+  if (k.img.complete && k.img.naturalWidth) {
+    // 絵のハイライトが崩れないよう、キャラは回転させず正立で描く
+    // 水中でふわっと傾き、ぶつかるとぷるんと揺れる
+    if (b.vx !== undefined) {
+      ctx.rotate(Math.max(-.14, Math.min(.14, b.vx / 700)) + Math.sin((b.age || 0) * 1.7 + (b.ph || 0)) * .025);
+      const w = (b.wob || 0) * Math.sin((b.wt || 0) * 22) * Math.exp(-(b.wt || 0) * 5);
+      ctx.scale(1 + w, 1 - w);
+    }
+    ctx.drawImage(k.img, -r, -r, r * 2, r * 2);
+  } else {
+    ctx.fillStyle = k.c; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function draw() {
+  const sh = shakeT > 0 ? shakeT * 10 : 0;
+  ctx.setTransform(scale * dpr, 0, 0, scale * dpr, (Math.random() - .5) * sh * scale * dpr, (Math.random() - .5) * sh * scale * dpr);
+  drawBg();
+  // デッドライン
+  const danger = overLine && running; // 線を越えた球がある間は点滅して警告
+  ctx.save();
+  ctx.setLineDash([10, 8]); ctx.lineWidth = 2;
+  ctx.strokeStyle = danger ? `rgba(255,60,60,${.5 + .5 * Math.sin(time * 14)})` : 'rgba(255,120,120,.45)';
+  ctx.beginPath(); ctx.moveTo(0, lineY()); ctx.lineTo(W, lineY()); ctx.stroke();
+  ctx.restore();
+  // ガイド線と待機中の生き物
+  if (running) {
+    const r = KINDS[cur].r;
+    ctx.save(); ctx.setLineDash([4, 8]); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(dropX, DROP_Y + r); ctx.lineTo(dropX, FLOOR); ctx.stroke(); ctx.restore();
+    // 小さな潜水艇（ドロッパー）
+    ctx.save(); ctx.translate(dropX, HUD_H + 16);
+    ctx.fillStyle = '#ffd24a'; ctx.beginPath(); ctx.ellipse(0, 0, 22, 11, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#9fe3ff'; ctx.beginPath(); ctx.arc(6, -1, 5, 0, 7); ctx.fill();
+    ctx.fillStyle = '#e0a800'; ctx.fillRect(-4, -17, 5, 7); ctx.restore();
+    drawBall({ lv: cur, x: dropX, y: DROP_Y, r, a: 0 }, canDrop ? 1 : .35);
+  }
+  for (const b of balls) {
+    if (b.shine && mode && mode.k === 'shine') {
+      ctx.save(); ctx.globalAlpha = .55 + .35 * Math.sin(time * 8);
+      ctx.strokeStyle = '#ffd6f0'; ctx.lineWidth = 4; ctx.shadowColor = '#ff7ac8'; ctx.shadowBlur = 12;
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r + 3, 0, 7); ctx.stroke(); ctx.restore();
+    }
+    drawBall(b);
+  }
+  // パーティクル
+  drawParts();
+  // スコアポップ
+  ctx.textAlign = 'center';
+  for (const p of pops) {
+    ctx.font = p.big ? 'bold 34px sans-serif' : 'bold 22px sans-serif';
+    ctx.globalAlpha = Math.max(0, Math.min(1, 1 - p.t / 1));
+    ctx.lineWidth = 4; ctx.strokeStyle = '#04243f'; ctx.strokeText(p.s, p.x, p.y - (p.big ? 0 : p.t * 40));
+    ctx.fillStyle = '#ffe066'; ctx.fillText(p.s, p.x, p.y - (p.big ? 0 : p.t * 40));
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ===== ループ =====
+let last = 0;
+function loop(ts) {
+  const dt = Math.min(.033, (ts - last) / 1000 || 0); last = ts; time += dt;
+  if (running) {
+    physics(dt);
+    for (const b of balls) b.age += dt;
+    if (!canDrop) { dropCool -= dt; if (dropCool <= 0) canDrop = true; }
+    // ゲームオーバー判定：線より上に留まり続けたら
+    // 線を越えている球のうち、動きが止まっている球があればカウント。動いている間はゲームオーバーにしない
+    const overs = balls.filter(b => b.age > 1.2 && b.y - b.r < lineY());
+    overLine = overs.length > 0;
+    const over = overs.some(b => b.touch && Math.hypot(b.vx, b.vy) < REST_SPEED); // 何かに乗って止まっている
+    // 群泳ラッシュ中と終了直後の猶予中は、線を越えてもゲームオーバーにしない
+    const safe = (mode && mode.k === 'rush') || graceT > 0;
+    dangerT = over && !safe ? dangerT + dt : 0;
+    if (dangerT > dangerLimit()) gameOver();
+    // 5000点ごとに難易度アップ
+    const st = Math.floor(score / DIFF_STEP);
+    if (st > diffStep) {
+      diffStep = st;
+      pops.push({ x: W / 2, y: H * .5, t: -.6, s: `🌊 難易度 ${diffStep + 1}`, big: true });
+      tone(220, 440, .4, 'sawtooth', .08);
+    }
+    playT += dt;
+    if (goldT > 0) goldT -= dt;
+    if (score >= nextGold) {
+      pops.push({ x: W / 2, y: H * .4, t: -.6, s: `🌟 ${nextGold}点突破！`, big: true });
+      while (score >= nextGold) nextGold += GOLD_STEP;
+      goldT = GOLD_SEC; sBig(); fishParade();
+    }
+  }
+  updMode(dt);
+  updBg(dt);
+  updFish(dt);
+  updParts(dt);
+  for (const p of pops) p.t += dt;
+  pops = pops.filter(p => p.t < 1);
+  for (let i = 0; i < bgBubbles.length; i++) {
+    const b = bgBubbles[i]; b.y -= b.sp * dt; b.x += ki * 320 * dt; if (b.x > W + 10) b.x -= W + 20;
+    if (b.y < -10) bgBubbles[i] = newBg(false);
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function gameOver() {
+  running = false; touching = false; sOver();
+  let isNew = false;
+  if (score > best) { best = score; isNew = true; try { localStorage.setItem('umiDropBest', best); } catch (e) {} }
+  updHud();
+  $('finalScore').textContent = score;
+  $('new').style.display = isNew ? 'block' : 'none';
+  $('maxLv').innerHTML = 'いちばん大きな生き物：' + kImg(KINDS[maxLv], 28) + ' ' + KINDS[maxLv].n;
+  setTimeout(() => $('over').classList.remove('hide'), 600);
+
+  // If this page is embedded (e.g. via <iframe> on a hosting/ranking site),
+  // report the final score to the parent page via postMessage so it can be
+  // recorded without that site needing any other access to this game.
+  if (window.parent && window.parent !== window) {
+    try { window.parent.postMessage({ type: 'gameOver', score: score }, '*'); }
+    catch (e) { console.error('postMessage to parent failed', e); }
+  }
+}
+
+function start() {
+  audio(); reset(); running = true;
+  $('title').classList.add('hide'); $('over').classList.add('hide');
+}
+$('startBtn').addEventListener('click', start);
+$('toTitleBtn').addEventListener('click', () => {
+  $('over').classList.add('hide'); $('title').classList.remove('hide');
+  $('titleBest').textContent = best ? `ベスト ${best}` : '';
+});
+$('howBtn').addEventListener('click', () => $('how').classList.remove('hide'));
+$('howClose').addEventListener('click', () => $('how').classList.add('hide'));
+$('titleBest').textContent = best ? `ベスト ${best}` : '';
+$('retryBtn').addEventListener('click', start);
+
+// 進化チェーン表示
+const chainHtml = KINDS.map(k => kImg(k, 24)).join('<span class="a">›</span>');
+$('chain').innerHTML = chainHtml;
+$('titleChain').innerHTML = KINDS.map(k => kImg(k, 24)).join('');
+
+resize(); reset(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

@@ -520,6 +520,10 @@ function physics(dt) {
   }
   for (const b of balls) {
     b.fx -= dt; b.wt += dt;
+    // 実際に動いた距離から速さを測る（積み重なった球は内部の速度値が残っても位置は動かないため）
+    const mv = b.lx === undefined ? 999 : Math.hypot(b.x - b.lx, b.y - b.ly) / Math.max(dt, 1e-3);
+    b.ms = b.ms === undefined ? mv : b.ms * .8 + mv * .2;
+    b.lx = b.x; b.ly = b.y;
     // 速く沈んでいる間は小さな泡の尾を引く
     if (!b.touch && b.vy > 140 && Math.random() < dt * 14) parts.push(bubble(b.x + (Math.random() - .5) * b.r, b.y - b.r * .8, 1.2 + Math.random() * 2.5, 0, -20));
   }
@@ -1004,7 +1008,7 @@ function loop(ts) {
     // 線を越えている球のうち、動きが止まっている球があればカウント。動いている間はゲームオーバーにしない
     const overs = balls.filter(b => b.age > 1.2 && b.y - b.r < lineY());
     overLine = overs.length > 0;
-    const over = overs.some(b => b.touch && Math.hypot(b.vx, b.vy) < REST_SPEED); // 何かに乗って止まっている
+    const over = overs.some(b => b.touch && b.ms < REST_SPEED); // 何かに乗って、実際に止まっている
     // 群泳ラッシュ中と終了直後の猶予中は、線を越えてもゲームオーバーにしない
     const safe = (mode && mode.k === 'rush') || graceT > 0;
     dangerT = over && !safe ? dangerT + dt : 0;

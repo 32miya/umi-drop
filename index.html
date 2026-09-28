@@ -128,7 +128,10 @@ const KINDS = [
   { f:'09-umigame',    n:'ウミガメ',         r:90,  c:'#8fe0d0' },
   { f:'10-same',       n:'サメ',             r:104, c:'#3a8ef0' },
 ];
-for (const k of KINDS) { k.src = `balls/${k.f}.png`; k.img = new Image(); k.img.src = k.src; }
+for (const k of KINDS) {
+  k.src = `balls/${k.f}.png`; k.img = new Image(); k.img.src = k.src;
+  k.simg = new Image(); k.simg.src = `balls/${k.f}-s.png`; // 驚いた顔（合体して消える瞬間用）
+}
 const kImg = (k, px) => `<img src="${k.src}" alt="${k.n}" width="${px}" height="${px}" style="vertical-align:middle">`;
 const MAX = KINDS.length - 1;
 const DROP_MAX = 4; // 落とせるのはフグまで
@@ -196,7 +199,7 @@ function resize() {
 window.addEventListener('resize', resize);
 
 // ===== 状態 =====
-let balls = [], parts = [], pops = [];
+let balls = [], parts = [], pops = [], ghosts = [];
 let score = 0, best = 0, maxLv = 0;
 let cur = 0, nxt = 0, dropX = W / 2;
 let canDrop = true, dropCool = 0;
@@ -280,7 +283,7 @@ function makeBall(lv, x, y, grow) {
 }
 
 function reset() {
-  balls = []; parts = []; pops = [];
+  balls = []; parts = []; pops = []; ghosts = [];
   score = 0; maxLv = 0; dangerT = 0; overLine = false; drops = 0; recentX = []; diffStep = 0;
   playT = 0; goldT = 0; nextGold = GOLD_STEP;
   mode = null; graceT = 0;
@@ -447,8 +450,12 @@ function drop() {
 }
 
 // ===== 物理 =====
+// 消える球：驚いた顔で一瞬止まってから、合体する場所へ吸い込まれて消える
+const SURPRISE_HOLD = .14, SURPRISE_OUT = .14;
+function addGhost(b, tx, ty) { ghosts.push({ lv: b.lv, x: b.x, y: b.y, r: b.r, tx, ty, t: 0 }); }
 function merge(a, b) {
   a.dead = b.dead = true;
+  { const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2; addGhost(a, mx, my); addGhost(b, mx, my); }
   const x = (a.x + b.x) / 2, y = (a.y + b.y) / 2, lv = a.lv;
   bubbleBurst(x, y, KINDS[lv].c, KINDS[lv].r);
   if (lv === MAX) {
@@ -812,6 +819,7 @@ function shineClear(lv) {
   const hit = balls.filter(b => !b.dead && b.lv === lv);
   for (const b of hit) {
     b.dead = true;
+    addGhost(b, b.x, b.y);
     bubbleBurst(b.x, b.y, KINDS[lv].c, b.r);
     sparkle(b.x, b.y, 10);
   }
@@ -948,6 +956,23 @@ function drawBg() {
   }
 }
 
+function drawGhosts() {
+  for (const g of ghosts) {
+    const k = KINDS[g.lv], im = k.simg.complete && k.simg.naturalWidth ? k.simg : k.img;
+    let x = g.x, y = g.y, sc, al;
+    if (g.t < SURPRISE_HOLD) {                       // びっくり：ぷくっと膨らんで小刻みに震える
+      const u = g.t / SURPRISE_HOLD;
+      sc = 1 + .12 * Math.sin(Math.min(1, u * 2) * Math.PI / 2);
+      x += Math.sin(g.t * 90) * 1.5; al = 1;
+    } else {                                          // 合体場所へ吸い込まれて消える
+      const u = (g.t - SURPRISE_HOLD) / SURPRISE_OUT, e = u * u;
+      x += (g.tx - x) * e; y += (g.ty - y) * e; sc = 1.12 - .5 * e; al = 1 - e;
+    }
+    const r = g.r * sc;
+    ctx.save(); ctx.globalAlpha = al * (1 - SHINE_BALL_FADE * shineRise());
+    ctx.drawImage(im, x - r, y - r, r * 2, r * 2); ctx.restore();
+  }
+}
 function drawBall(b, alpha = 1) {
   const k = KINDS[b.lv], r = b.r;
   // シャインタイム中は球を透かして、後ろのキャラが見えるようにする
@@ -999,6 +1024,7 @@ function draw() {
     drawBall(b);
   }
   // パーティクル
+  drawGhosts();
   drawParts();
   // スコアポップ
   ctx.textAlign = 'center';
@@ -1047,6 +1073,8 @@ function loop(ts) {
   updBg(dt);
   updFish(dt);
   updParts(dt);
+  for (const g of ghosts) g.t += dt;
+  ghosts = ghosts.filter(g => g.t < SURPRISE_HOLD + SURPRISE_OUT);
   for (const p of pops) p.t += dt;
   pops = pops.filter(p => p.t < 1);
   for (let i = 0; i < bgBubbles.length; i++) {

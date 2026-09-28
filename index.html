@@ -233,22 +233,36 @@ function exposedKinds() {
   }
   return set;
 }
+// 出てくる球を決める：同じ球が3個以上続かないよう、直前2個と同じなら引き直す
+let dealt = [];
 function randKind() {
+  let k = pickKind();
+  const n = dealt.length;
+  if (n >= 2 && dealt[n - 1] === k && dealt[n - 2] === k) {
+    for (let i = 0; i < 20 && k === dealt[n - 1]; i++) k = pickKind();
+    if (k === dealt[n - 1]) k = k > 0 ? k - 1 : 1; // それでも同じなら隣の種類に
+  }
+  dealt.push(k); if (dealt.length > 2) dealt.shift();
+  return k;
+}
+// 小さい方から5番目（ツノダシ）以降は出にくくする
+const BIG_RARE = 4, BIG_KEEP = .3; // 意地悪制御でも5番目を渡すのは3割だけ
+function pickKind() {
   const shine = mode && mode.k === 'shine';
   const mx = shine ? SHINE_DROP_MAX : DROP_MAX;
   const D = difficulty(), t = Math.min(1, D / 6);
   // 易しい：小さい球が出やすい ⇔ 難しい：大きめの球が増える
-  const easy = [30, 26, 20, 14, 10], hard = [12, 16, 22, 26, 24];
+  const easy = [32, 28, 22, 14, 4], hard = [16, 20, 26, 28, 10];
   const w = easy.map((e, i) => e + (hard[i] - e) * t).slice(0, mx + 1);
   // 意地悪制御：確率で「盤面の表面に無い（合わせにくい）球」を渡す。単調な投下を続けると強くなる
   const mono = monotony();
   const nasty = shine ? 0 : Math.min(.9, .08 + .07 * D + .65 * mono);
   if (Math.random() < nasty) {
     const ex = exposedKinds(), cands = [];
-    for (let i = 0; i <= mx; i++) if (!ex.has(i)) cands.push(i);
+    for (let i = 0; i <= mx; i++) if (!ex.has(i) && (i < BIG_RARE || Math.random() < BIG_KEEP)) cands.push(i);
     // 単調な投下中は、合わせにくい中で一番大きい球を渡す
     if (cands.length) return cands[mono || Math.random() < .6 ? cands.length - 1 : Math.random() * cands.length | 0];
-    if (mono) return mx; // 全種類が表面にあるなら一番大きい球
+    if (mono) return Math.min(mx, BIG_RARE - 1); // 全種類が表面にあるなら4番目の球
   }
   let r = Math.random() * w.reduce((a, b) => a + b), i = 0;
   while (i < w.length - 1 && r > w[i]) { r -= w[i]; i++; }
@@ -270,6 +284,7 @@ function reset() {
   score = 0; maxLv = 0; dangerT = 0; overLine = false; drops = 0; recentX = []; diffStep = 0;
   playT = 0; goldT = 0; nextGold = GOLD_STEP;
   mode = null; graceT = 0;
+  dealt = [];
   cur = randKind(); nxt = randKind();
   canDrop = true; dropCool = 0;
   updHud();

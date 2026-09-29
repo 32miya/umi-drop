@@ -8,10 +8,11 @@
 <title>海ドロップ</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
-  html,body{height:100%;overflow:hidden;background:#021526;color:#fff;
+  html,body{height:100%;overflow:hidden;background:#0a4f93;color:#fff;
     font-family:"Hiragino Maru Gothic ProN","Hiragino Sans","Noto Sans JP",sans-serif;touch-action:none;overscroll-behavior:none}
   /* 画面いっぱいに使う。ノッチ・ダイナミックアイランド・ホームバーは端末が返す safe-area 分だけ避ける */
-  #app{position:fixed;inset:0;display:flex;flex-direction:column;
+  #app{position:fixed;top:0;left:0;right:0;height:100vh;height:100dvh;height:var(--app-h,100dvh);
+    background:#021526;display:flex;flex-direction:column;
     padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
   #stage{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;min-width:0}
   /* ゲームウィンドウ。--u = ワールド座標1あたりのCSS px（resize() で設定） */
@@ -46,7 +47,8 @@
   .row{font-size:24px;letter-spacing:2px;margin:6px 0}
   #new{color:#ffe066;font-weight:bold;display:none}
   /* ===== タイトル画面 ===== */
-  #title{position:fixed;inset:0;z-index:9;overflow:hidden;background:#0a4f93}
+  #title{position:fixed;top:0;left:0;right:0;height:100vh;height:100dvh;height:var(--app-h,100dvh);
+    z-index:9;overflow:hidden;background:#0a4f93}
   #title.hide{display:none}
   #titleBg{position:absolute;inset:-30px;background:url(img/title.jpg) center/cover;filter:blur(18px) brightness(.85);transform:scale(1.1)}
   #titleInner{position:relative;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -186,6 +188,7 @@ let scale = 1, dpr = 1;
 function resize() {
   const st = document.getElementById('stage');
   const aw = st.clientWidth, ah = st.clientHeight;
+  if (!(aw > 0 && ah > 0)) return; // まだ画面の大きさが決まっていない（アプリ内ブラウザの起動直後など）
   H = Math.round(Math.max(620, Math.min(1100, W * ah / aw)));
   FLOOR = H - CHAIN_H;
   scale = Math.min(aw / W, ah / H);
@@ -196,7 +199,27 @@ function resize() {
   cv.height = Math.round(H * scale * dpr);
   document.getElementById('frame').style.setProperty('--u', scale + 'px');
 }
-window.addEventListener('resize', resize);
+// ===== 画面サイズの監視 =====
+// アプリ内ブラウザでは、大きさ0のままページを読み込み、その後サイズ変更の通知が来ないことがある。
+// 実際の高さを --app-h に設定し、起動直後は一定間隔で測り直して変化があれば表示をやり直す。
+let lastVW = -1, lastVH = -1;
+function fitViewport() {
+  const vw = window.innerWidth || document.documentElement.clientWidth;
+  const vh = window.innerHeight || document.documentElement.clientHeight;
+  // 200px 未満は表示前の仮の大きさとみなして使わない
+  if (vw >= 200 && vh >= 200 && (vw !== lastVW || vh !== lastVH)) {
+    lastVW = vw; lastVH = vh;
+    document.documentElement.style.setProperty('--app-h', vh + 'px');
+    resize();
+  }
+}
+['resize', 'orientationchange', 'pageshow', 'focus'].forEach(ev => window.addEventListener(ev, fitViewport));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) fitViewport(); });
+if (window.visualViewport) window.visualViewport.addEventListener('resize', fitViewport);
+if (window.ResizeObserver) new ResizeObserver(fitViewport).observe(document.documentElement);
+{ // 起動から5秒間は 0.25秒ごと、その後は1秒ごとに測り直す（変化が無ければ何もしない軽い処理）
+  let n = 0; const id = setInterval(() => { fitViewport(); if (++n >= 20) { clearInterval(id); setInterval(fitViewport, 1000); } }, 250);
+}
 
 // ===== 状態 =====
 let balls = [], parts = [], pops = [], ghosts = [];
@@ -1105,6 +1128,7 @@ function gameOver() {
 }
 
 function start() {
+  lastVW = -1; fitViewport();
   audio(); reset(); running = true;
   $('title').classList.add('hide'); $('over').classList.add('hide');
 }
@@ -1123,7 +1147,7 @@ const chainHtml = KINDS.map(k => kImg(k, 24)).join('<span class="a">›</span>')
 $('chain').innerHTML = chainHtml;
 $('titleChain').innerHTML = KINDS.map(k => kImg(k, 24)).join('');
 
-resize(); reset(); requestAnimationFrame(loop);
+fitViewport(); resize(); reset(); requestAnimationFrame(loop);
 })();
 </script>
 </body>

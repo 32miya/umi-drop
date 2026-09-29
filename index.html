@@ -130,9 +130,19 @@ const KINDS = [
   { f:'09-umigame',    n:'ウミガメ',         r:90,  c:'#8fe0d0' },
   { f:'10-same',       n:'サメ',             r:104, c:'#3a8ef0' },
 ];
+// ===== 画像の遅延読み込み =====
+// アプリ内ブラウザにはページの読み込み完了（画像を含む）まで画面を出さないものがあるため、
+// タイトル画像以外は読み込み完了の後で読み込み始める。未読込の間は代わりの描画で動く。
+const lazyImgs = [];
+function lazyImage(src) { const im = new Image(); lazyImgs.push([im, src]); return im; }
+const afterLoad = []; // 読み込み完了後に行う処理（画像つきの表示など）
+function loadLazyImages() { for (const [im, src] of lazyImgs) if (!im.src) im.src = src; afterLoad.forEach(f => f()); afterLoad.length = 0; }
+if (document.readyState === 'complete') setTimeout(loadLazyImages, 0);
+else window.addEventListener('load', () => setTimeout(loadLazyImages, 0));
+
 for (const k of KINDS) {
-  k.src = `balls/${k.f}.png`; k.img = new Image(); k.img.src = k.src;
-  k.simg = new Image(); k.simg.src = `balls/${k.f}-s.png`; // 驚いた顔（合体して消える瞬間用）
+  k.src = `balls/${k.f}.webp`; k.img = lazyImage(k.src);
+  k.simg = lazyImage(`balls/${k.f}-s.webp`); // 驚いた顔（合体して消える瞬間用）
 }
 const kImg = (k, px) => `<img src="${k.src}" alt="${k.n}" width="${px}" height="${px}" style="vertical-align:middle">`;
 const MAX = KINDS.length - 1;
@@ -158,7 +168,7 @@ const DEEP_SEC = 9, RUSH_SEC = 7, RUSH_GRACE = 3.5; // 演出の長さ・群泳�
 const SHINE_SEC = 6;         // シャインタイムの長さ（秒）
 const SHINE_DROP_MAX = 2;    // シャインタイム中に落ちてくる球（0:エビ〜2:クマノミ）
 const SHINE_BALL_FADE = .55; // シャインタイム中の球の透け具合（0=透けない〜1=見えない）
-const shineImg = new Image(); shineImg.src = 'img/shine.png';
+const shineImg = lazyImage('img/shine.webp');
 // ===== 特別演出の抽選：球を1つ落とすごとに抽選 =====
 //   深潮・シャインタイムは 1ゲームに1回前後、群泳ラッシュは数ゲームに1回のレア演出。
 //   イワシの群れは通常モードのまま背景を横切るだけの演出。
@@ -662,13 +672,13 @@ function newBg(init) {
 }
 // ===== 背景画像 =====
 // 時間経過で 夜→夜明け→昼→夕方→夜… と巡回。得点の節目で一定時間だけ黄金の海に。
-const BG_FILES = ['bg/1-night.jpg', 'bg/2-dawn.jpg', 'bg/3-day.jpg', 'bg/4-sunset.jpg'];
+const BG_FILES = ['bg/1-night.webp', 'bg/2-dawn.webp', 'bg/3-day.webp', 'bg/4-sunset.webp'];
 const BG_GOLD = BG_FILES.length;       // 黄金背景のインデックス
 const BG_STAGE_SEC = 45;               // 1つの時間帯の長さ（秒）
 const GOLD_STEP = 10000;                 // この点数ごとに黄金背景
 const GOLD_SEC = 8;                    // 黄金背景を表示する秒数
 const FADE_SEC = 2.5;                  // 切り替えのクロスフェード秒数
-const bgImgs = [...BG_FILES, 'bg/5-gold.jpg'].map(src => { const im = new Image(); im.src = src; return im; });
+const bgImgs = [...BG_FILES, 'bg/5-gold.webp'].map(src => lazyImage(src));
 let bgFrom = 0, bgTo = 0, bgFade = 1, playT = 0, goldT = 0, nextGold = GOLD_STEP;
 
 function bgTarget() {
@@ -692,26 +702,26 @@ function drawImgCover(im, alpha) {
 // ===== 背景エフェクト：泳ぐ魚 =====
 // 画像はすべて右向き。w は奥行き1.0のときの表示幅（ワールド座標）
 const FISH_DEF = {
-  sora:     { src: 'fish/sora1.png',     w: 52, wag: 8 },
-  nanyo:    { src: 'fish/nanyo1.png',    w: 78, wag: 6 },
-  hata:     { src: 'fish/hata1.png',     w: 96, wag: 5 },
-  royal:    { src: 'fish/royal1.png',    w: 44, wag: 9 },
-  aigo:     { src: 'fish/aigo1.png',     w: 56, wag: 7 },
-  bera:     { src: 'fish/bera1.png',     w: 70, wag: 8 },
-  mandarin: { src: 'fish/mandarin1.png', w: 64, wag: 6 },
-  iwashi1:  { src: 'fish/iwashi1.png',   w: 42, wag: 15 },
-  iwashi2:  { src: 'fish/iwashi2.png',   w: 40, wag: 15 },
-  iwashi4:  { src: 'fish/iwashi4.png',   w: 38, wag: 15 },
+  sora:     { src: 'fish/sora1.webp',     w: 52, wag: 8 },
+  nanyo:    { src: 'fish/nanyo1.webp',    w: 78, wag: 6 },
+  hata:     { src: 'fish/hata1.webp',     w: 96, wag: 5 },
+  royal:    { src: 'fish/royal1.webp',    w: 44, wag: 9 },
+  aigo:     { src: 'fish/aigo1.webp',     w: 56, wag: 7 },
+  bera:     { src: 'fish/bera1.webp',     w: 70, wag: 8 },
+  mandarin: { src: 'fish/mandarin1.webp', w: 64, wag: 6 },
+  iwashi1:  { src: 'fish/iwashi1.webp',   w: 42, wag: 15 },
+  iwashi2:  { src: 'fish/iwashi2.webp',   w: 40, wag: 15 },
+  iwashi4:  { src: 'fish/iwashi4.webp',   w: 38, wag: 15 },
   // 群泳ラッシュ用（紫・黄色のクマノミ、真ん中に金色の1匹）
-  kuma_p1:  { src: 'fish/kuma_p1.png',   w: 50, wag: 11 },
-  kuma_p2:  { src: 'fish/kuma_p2.png',   w: 50, wag: 11 },
-  kuma_p3:  { src: 'fish/kuma_p3.png',   w: 51, wag: 11 },
-  kuma_y1:  { src: 'fish/kuma_y1.png',   w: 36, wag: 12 },
-  kuma_y2:  { src: 'fish/kuma_y2.png',   w: 36, wag: 12 },
-  kuma_y3:  { src: 'fish/kuma_y3.png',   w: 35, wag: 12 },
-  kuma_gold:{ src: 'fish/kuma_gold.png', w: 50, wag: 11 },
+  kuma_p1:  { src: 'fish/kuma_p1.webp',   w: 50, wag: 11 },
+  kuma_p2:  { src: 'fish/kuma_p2.webp',   w: 50, wag: 11 },
+  kuma_p3:  { src: 'fish/kuma_p3.webp',   w: 51, wag: 11 },
+  kuma_y1:  { src: 'fish/kuma_y1.webp',   w: 36, wag: 12 },
+  kuma_y2:  { src: 'fish/kuma_y2.webp',   w: 36, wag: 12 },
+  kuma_y3:  { src: 'fish/kuma_y3.webp',   w: 35, wag: 12 },
+  kuma_gold:{ src: 'fish/kuma_gold.webp', w: 50, wag: 11 },
 };
-for (const k in FISH_DEF) { const im = new Image(); im.src = FISH_DEF[k].src; FISH_DEF[k].img = im; }
+for (const k in FISH_DEF) FISH_DEF[k].img = lazyImage(FISH_DEF[k].src);
 const AMBIENT = ['sora', 'nanyo', 'hata', 'royal', 'aigo', 'bera', 'mandarin', 'sora', 'royal', 'aigo'];
 const IWASHI = ['iwashi1', 'iwashi2', 'iwashi4'];
 const KUMA = ['kuma_p1', 'kuma_y1', 'kuma_p2', 'kuma_y2', 'kuma_p3', 'kuma_y3'];
@@ -1143,9 +1153,10 @@ $('titleBest').textContent = best ? `ベスト ${best}` : '';
 $('retryBtn').addEventListener('click', start);
 
 // 進化チェーン表示
-const chainHtml = KINDS.map(k => kImg(k, 24)).join('<span class="a">›</span>');
-$('chain').innerHTML = chainHtml;
-$('titleChain').innerHTML = KINDS.map(k => kImg(k, 24)).join('');
+afterLoad.push(() => {
+  $('chain').innerHTML = KINDS.map(k => kImg(k, 24)).join('<span class="a">›</span>');
+  $('titleChain').innerHTML = KINDS.map(k => kImg(k, 24)).join('');
+});
 
 fitViewport(); resize(); reset(); requestAnimationFrame(loop);
 })();

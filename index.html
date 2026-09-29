@@ -318,7 +318,7 @@ function makeBall(lv, x, y, grow) {
 function reset() {
   balls = []; parts = []; pops = []; ghosts = [];
   score = 0; maxLv = 0; dangerT = 0; overLine = false; drops = 0; recentX = []; diffStep = 0;
-  playT = 0; goldT = 0; nextGold = GOLD_STEP;
+  playT = 0; goldT = 0; nextGold = MS_STEP; badge = null;
   mode = null; graceT = 0;
   dealt = [];
   cur = randKind(); nxt = randKind();
@@ -671,18 +671,26 @@ function newBg(init) {
            sp: 20 + Math.random() * 40, ph: Math.random() * 6 };
 }
 // ===== 背景画像 =====
-// 時間経過で 夜→夜明け→昼→夕方→夜… と巡回。得点の節目で一定時間だけ黄金の海に。
+// 時間経過で 夜→夜明け→昼→夕方→夜… と巡回。得点の節目では一定時間だけ特別な背景に。
 const BG_FILES = ['bg/1-night.webp', 'bg/2-dawn.webp', 'bg/3-day.webp', 'bg/4-sunset.webp'];
-const BG_GOLD = BG_FILES.length;       // 黄金背景のインデックス
 const BG_STAGE_SEC = 45;               // 1つの時間帯の長さ（秒）
-const GOLD_STEP = 10000;                 // この点数ごとに黄金背景
-const GOLD_SEC = 8;                    // 黄金背景を表示する秒数
 const FADE_SEC = 2.5;                  // 切り替えのクロスフェード秒数
-const bgImgs = [...BG_FILES, 'bg/5-gold.webp'].map(src => lazyImage(src));
-let bgFrom = 0, bgTo = 0, bgFade = 1, playT = 0, goldT = 0, nextGold = GOLD_STEP;
+// 得点の節目（5000点ごと）
+//   5000・15000・25000…（1万で割り切れない）→ ジンベエザメ
+//   10000・20000                          → ザトウクジラ
+//   30000・40000・50000…                  → 貝の少女
+const MS_STEP = 5000;                  // 節目の間隔
+const GOLD_SEC = 8;                    // 特別な背景を表示する秒数
+const BADGE_SEC = 3.2;                 // 「○○点Over」を表示する秒数
+const BG_MS = { shark: BG_FILES.length, whale: BG_FILES.length + 1, shell: BG_FILES.length + 2 };
+const bgImgs = [...BG_FILES, 'bg/ms-shark.webp', 'bg/ms-whale.webp', 'bg/ms-shell.webp'].map(src => lazyImage(src));
+const BADGE_IMGS = {};
+for (const n of [5000, 10000, 15000, 20000, 25000, 30000]) BADGE_IMGS[n] = lazyImage(`img/score-${n}.webp`);
+let bgFrom = 0, bgTo = 0, bgFade = 1, playT = 0, goldT = 0, nextGold = MS_STEP, msBg = BG_MS.shark, badge = null;
+function milestoneBg(m) { return m % 10000 ? BG_MS.shark : m <= 20000 ? BG_MS.whale : BG_MS.shell; }
 
 function bgTarget() {
-  if (goldT > 0) return BG_GOLD;
+  if (goldT > 0) return msBg;
   return Math.floor(playT / BG_STAGE_SEC) % BG_FILES.length;
 }
 function updBg(dt) {
@@ -1068,6 +1076,41 @@ function draw() {
     ctx.fillStyle = '#ffe066'; ctx.fillText(p.s, p.x, p.y - (p.big ? 0 : p.t * 40));
   }
   ctx.globalAlpha = 1;
+  drawBadge();
+}
+
+// 得点の節目のバッジ：ポンと飛び出してふわふわ浮かび、最後は少し大きくなりながら消える
+function drawBadge() {
+  if (!badge) return;
+  const t = badge.t, im = BADGE_IMGS[badge.m];
+  let sc;
+  if (t < .18) sc = .3 + (t / .18) * .85;                 // 0.3 → 1.15
+  else if (t < .34) sc = 1.15 - ((t - .18) / .16) * .15;  // 1.15 → 1.0
+  else sc = 1;
+  const out = Math.max(0, (t - (BADGE_SEC - .5)) / .5);    // 最後の0.5秒でフェード
+  sc *= 1 + out * .15;
+  const cx = W / 2, cy = H * .38 + Math.sin(t * 3) * 6;
+  ctx.save();
+  ctx.globalAlpha = 1 - out;
+  ctx.translate(cx, cy); ctx.scale(sc, sc); ctx.rotate(Math.sin(t * 2.2) * .03);
+  if (im && im.complete && im.naturalWidth) {
+    const w = W * .9, h = w * im.naturalHeight / im.naturalWidth;
+    ctx.drawImage(im, -w / 2, -h / 2, w, h);
+  } else {
+    // 画像が無い節目（35000点以降など）は文字で描く
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '900 58px "Hiragino Maru Gothic ProN","Hiragino Sans",sans-serif';
+    const g = ctx.createLinearGradient(0, -50, 0, 10);
+    g.addColorStop(0, '#fff6b0'); g.addColorStop(.5, '#ffb627'); g.addColorStop(1, '#ff6a00');
+    ctx.lineJoin = 'round'; ctx.lineWidth = 12; ctx.strokeStyle = '#3a1a00';
+    ctx.strokeText(`${badge.m}点`, 0, -22); ctx.fillStyle = g; ctx.fillText(`${badge.m}点`, 0, -22);
+    ctx.font = 'italic 900 44px "Hiragino Maru Gothic ProN","Hiragino Sans",sans-serif';
+    const g2 = ctx.createLinearGradient(-80, 0, 80, 0);
+    g2.addColorStop(0, '#ff5fd2'); g2.addColorStop(1, '#ffc94a');
+    ctx.lineWidth = 10; ctx.strokeStyle = '#1b2a6b';
+    ctx.strokeText('Over', 0, 30); ctx.fillStyle = g2; ctx.fillText('Over', 0, 30);
+  }
+  ctx.restore();
 }
 
 // ===== ループ =====
@@ -1091,21 +1134,24 @@ function loop(ts) {
     const st = Math.floor(score / DIFF_STEP);
     if (st > diffStep) {
       diffStep = st;
-      pops.push({ x: W / 2, y: H * .5, t: -.6, s: `🌊 難易度 ${diffStep + 1}`, big: true });
-      tone(220, 440, .4, 'sawtooth', .08);
+      tone(220, 440, .4, 'sawtooth', .08); // 表示は得点の節目のバッジに任せる
     }
     playT += dt;
     if (goldT > 0) goldT -= dt;
     if (score >= nextGold) {
-      pops.push({ x: W / 2, y: H * .4, t: -.6, s: `🌟 ${nextGold}点突破！`, big: true });
-      while (score >= nextGold) nextGold += GOLD_STEP;
-      goldT = GOLD_SEC; sBig(); fishParade();
+      let m = nextGold;
+      while (score >= nextGold) { m = nextGold; nextGold += MS_STEP; } // 一気に越えた時は一番上の節目
+      msBg = milestoneBg(m); goldT = GOLD_SEC;
+      badge = { m, t: 0 };
+      sparkle(W / 2, H * .38, 24);
+      sBig(); fishParade();
     }
   }
   updMode(dt);
   updBg(dt);
   updFish(dt);
   updParts(dt);
+  if (badge && (badge.t += dt) > BADGE_SEC) badge = null;
   for (const g of ghosts) g.t += dt;
   ghosts = ghosts.filter(g => g.t < SURPRISE_HOLD + SURPRISE_OUT);
   for (const p of pops) p.t += dt;

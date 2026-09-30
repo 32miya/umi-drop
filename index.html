@@ -45,7 +45,38 @@
     background:linear-gradient(#bff4ff,#5fd3f3);box-shadow:0 4px 0 #1d7ea0}
   .btn:active{transform:translateY(3px);box-shadow:0 1px 0 #1d7ea0}
   .row{font-size:24px;letter-spacing:2px;margin:6px 0}
-  #new{color:#ffe066;font-weight:bold;display:none}
+  /* ===== リザルト画面：アニメ背景の上に得点とボタン ===== */
+  #over{position:fixed;top:0;left:0;right:0;height:100vh;height:100dvh;height:var(--app-h,100dvh);
+    z-index:10;overflow:hidden;background:#3b1d5e}
+  #over.hide{display:none}
+  #resPoster,#resAnim{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 40%}
+  #resAnim{opacity:0;transition:opacity .6s}
+  #resAnim.ready{opacity:1}
+  #resShade{position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(rgba(40,10,70,.6),rgba(40,10,70,0) 36%,rgba(40,10,70,0) 62%,rgba(30,5,50,.7))}
+  #resTop{position:absolute;left:16px;right:16px;top:calc(env(safe-area-inset-top) + 18px);text-align:center;
+    padding:12px 14px 10px;border-radius:22px;background:rgba(45,15,80,.42);border:1.5px solid rgba(255,255,255,.35);
+    box-shadow:0 8px 30px rgba(40,0,60,.35);opacity:0;transform:translateY(-24px)}
+  #resLabel{font-size:14px;font-weight:bold;letter-spacing:.35em;color:#ffe9a8;text-shadow:0 2px 6px rgba(80,0,60,.7)}
+  #resScoreRow{line-height:1;margin:4px 0 2px}
+  #finalScore{font-size:60px;font-weight:900;color:#fff;
+    text-shadow:0 0 12px rgba(255,120,200,.9),0 3px 0 #b1306f,0 5px 10px rgba(60,0,40,.6)}
+  #resUnit{font-size:24px;font-weight:900;color:#ffe066;margin-left:4px;text-shadow:0 2px 0 #9a4a00}
+  #new{color:#ffe066;font-weight:bold;display:none;font-size:16px;margin:4px 0;text-shadow:0 2px 4px rgba(0,0,0,.6);
+    animation:resBlink 1s ease-in-out infinite}
+  @keyframes resBlink{50%{opacity:.55}}
+  #maxLv{font-size:14px;margin:4px 0 0;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+  #maxLv img{width:28px;height:28px;vertical-align:middle}
+  #resBottom{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 22px);
+    display:flex;flex-direction:column;align-items:center;gap:12px;opacity:0;transform:translateY(24px)}
+  #retryBtn{margin:0;font-size:24px;padding:14px 56px;letter-spacing:.1em;color:#6b1f4f;
+    background:linear-gradient(#fff3fb,#ff9ed6);box-shadow:0 5px 0 #c2508f,0 0 22px rgba(255,160,220,.8)}
+  #retryBtn:active{transform:translateY(4px);box-shadow:0 1px 0 #c2508f}
+  #toTitleBtn{font-size:15px;font-weight:bold;color:#fff;background:rgba(50,15,80,.5);border:1.5px solid rgba(255,255,255,.7);
+    border-radius:24px;padding:8px 26px;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+  #over.show #resTop{animation:resIn .5s cubic-bezier(.2,1.4,.4,1) forwards}
+  #over.show #resBottom{animation:resIn .5s .7s ease-out forwards}
+  @keyframes resIn{to{opacity:1;transform:none}}
   /* ===== タイトル画面 ===== */
   #title{position:fixed;top:0;left:0;right:0;height:100vh;height:100dvh;height:var(--app-h,100dvh);
     z-index:9;overflow:hidden;background:#0a4f93}
@@ -102,14 +133,19 @@
   </div>
 </div>
 
-<div class="ov hide" id="over">
-  <div class="card">
-    <h1>ゲームオーバー</h1>
-    <div class="big" id="finalScore">0</div>
+<div class="hide" id="over">
+  <img id="resPoster" alt="">
+  <img id="resAnim" alt="">
+  <div id="resShade"></div>
+  <div id="resTop">
+    <div id="resLabel">RESULT</div>
+    <div id="resScoreRow"><span id="finalScore">0</span><span id="resUnit">点</span></div>
     <p id="new">🎉 ベストスコア更新！</p>
     <p id="maxLv"></p>
-    <button class="btn" id="retryBtn">もう一度</button><br>
-    <button id="toTitleBtn" style="margin-top:14px;font-size:14px;color:#fff;background:none;border:1px solid rgba(255,255,255,.5);border-radius:20px;padding:6px 18px">タイトルへ</button>
+  </div>
+  <div id="resBottom">
+    <button class="btn" id="retryBtn">もう一度</button>
+    <button id="toTitleBtn">タイトルへ</button>
   </div>
 </div>
 
@@ -1169,10 +1205,13 @@ function gameOver() {
   let isNew = false;
   if (score > best) { best = score; isNew = true; try { localStorage.setItem('umiDropBest', best); } catch (e) {} }
   updHud();
-  $('finalScore').textContent = score;
+  $('finalScore').textContent = 0;
   $('new').style.display = isNew ? 'block' : 'none';
   $('maxLv').innerHTML = 'いちばん大きな生き物：' + kImg(KINDS[maxLv], 28) + ' ' + KINDS[maxLv].n;
-  setTimeout(() => $('over').classList.remove('hide'), 600);
+  setTimeout(() => {
+    const ov = $('over'); ov.classList.remove('show', 'hide'); void ov.offsetWidth; ov.classList.add('show');
+    setTimeout(() => countUp($('finalScore'), score, 1200), 250);
+  }, 600);
 
   // If this page is embedded (e.g. via <iframe> on a hosting/ranking site),
   // report the final score to the parent page via postMessage so it can be
@@ -1183,8 +1222,25 @@ function gameOver() {
   }
 }
 
+// リザルト背景（アニメ約3MB）は初回のゲーム開始時に読み込み始める（起動時の表示を遅らせない）
+let resLoading = false;
+function loadResultBg() {
+  if (resLoading) return; resLoading = true;
+  $('resPoster').src = 'img/result-poster.webp';
+  const a = $('resAnim'); a.onload = () => a.classList.add('ready'); a.src = 'img/result.webp';
+}
+// 得点を0から数え上げる
+function countUp(el, to, ms) {
+  const t0 = performance.now();
+  const step = now => {
+    const u = Math.min(1, (now - t0) / ms), e = 1 - Math.pow(1 - u, 3);
+    el.textContent = Math.round(to * e);
+    if (u < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
 function start() {
-  lastVW = -1; fitViewport();
+  lastVW = -1; fitViewport(); loadResultBg();
   audio(); reset(); running = true;
   $('title').classList.add('hide'); $('over').classList.add('hide');
 }

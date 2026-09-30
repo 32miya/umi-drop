@@ -1173,6 +1173,7 @@ function loop(ts) {
       tone(220, 440, .4, 'sawtooth', .08); // 表示は得点の節目のバッジに任せる
     }
     playT += dt;
+    checkHighPreload();
     if (goldT > 0) goldT -= dt;
     if (score >= nextGold) {
       let m = nextGold;
@@ -1206,6 +1207,7 @@ function gameOver() {
   if (score > best) { best = score; isNew = true; try { localStorage.setItem('umiDropBest', best); } catch (e) {} }
   updHud();
   $('finalScore').textContent = 0;
+  showResultBg(isNew ? 'high' : 'normal'); // ベスト更新時は専用の背景
   $('new').style.display = isNew ? 'block' : 'none';
   $('maxLv').innerHTML = 'いちばん大きな生き物：' + kImg(KINDS[maxLv], 28) + ' ' + KINDS[maxLv].n;
   setTimeout(() => {
@@ -1222,12 +1224,28 @@ function gameOver() {
   }
 }
 
-// リザルト背景（アニメ約3MB）は初回のゲーム開始時に読み込み始める（起動時の表示を遅らせない）
-let resLoading = false;
-function loadResultBg() {
-  if (resLoading) return; resLoading = true;
-  $('resPoster').src = 'img/result-poster.webp';
-  const a = $('resAnim'); a.onload = () => a.classList.add('ready'); a.src = 'img/result.webp';
+// リザルト背景（通常：アニメ約3MB／ハイスコア：約5MB）。起動時の表示を遅らせないよう、
+//   通常   … 初回のゲーム開始時に読み込み開始
+//   ハイスコア … ベストを更新しそうになった時（ベストの6割に到達、または初プレイ）に読み込み開始
+const RES_BG = {
+  normal: { poster: 'img/result-poster.webp', anim: 'img/result.webp' },
+  high:   { poster: 'img/result-high-poster.webp', anim: 'img/result-high.webp' },
+};
+const resPre = {};
+function preloadRes(kind) {
+  if (resPre[kind]) return;
+  resPre[kind] = [new Image(), new Image()];
+  resPre[kind][0].src = RES_BG[kind].poster; resPre[kind][1].src = RES_BG[kind].anim;
+}
+function loadResultBg() { preloadRes('normal'); if (!best) preloadRes('high'); }
+function checkHighPreload() { if (!resPre.high && score >= best * .6) preloadRes('high'); }
+function showResultBg(kind) {
+  preloadRes(kind);
+  const a = $('resAnim');
+  $('resPoster').src = RES_BG[kind].poster;
+  a.classList.remove('ready'); a.onload = () => a.classList.add('ready');
+  a.src = RES_BG[kind].anim;
+  if (a.complete && a.naturalWidth) a.classList.add('ready');
 }
 // 得点を0から数え上げる
 function countUp(el, to, ms) {

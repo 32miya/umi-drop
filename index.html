@@ -1203,6 +1203,9 @@ function loop(ts) {
 
 function gameOver() {
   running = false; touching = false; sOver();
+  // ゲームオーバー効果音が鳴り終わったら AudioContext を suspend し、
+  // iOS がビデオ音声を再生できるよう音声セッションを解放する
+  setTimeout(() => { try { if (actx) actx.suspend(); } catch(e) {} }, 1000);
   let isNew = false; const firstPlay = !best;
   if (score > best) { best = score; isNew = true; try { localStorage.setItem('umiDropBest', best); } catch (e) {} }
   updHud();
@@ -1280,10 +1283,12 @@ $('howBtn').addEventListener('click', () => $('how').classList.remove('hide'));
 $('howClose').addEventListener('click', () => $('how').classList.add('hide'));
 $('titleBest').textContent = best ? `ベスト ${best}` : '';
 $('retryBtn').addEventListener('click', start);
-// iOSでミュートになった場合、リザルト画面タップ時に音声を解除する
+// リザルト画面タップ時：ミュート解除 or 一時停止からの再開（iOS音声セッション対応）
 $('over').addEventListener('click', () => {
   const a = $('resAnim');
-  if (a.muted && a.src) { a.muted = false; a.play().catch(() => {}); }
+  if (!a.src) return;
+  a.muted = false;
+  if (a.paused) a.play().catch(() => { a.muted = true; a.play().catch(() => {}); });
 }, { capture: true });
 
 // 進化チェーン表示

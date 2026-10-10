@@ -135,7 +135,7 @@
 
 <div class="hide" id="over">
   <img id="resPoster" alt="">
-  <img id="resAnim" alt="">
+  <video id="resAnim" muted loop playsinline></video>
   <div id="resShade"></div>
   <div id="resTop">
     <div id="resLabel">RESULT</div>
@@ -1224,18 +1224,19 @@ function gameOver() {
   }
 }
 
-// リザルト背景（通常：アニメ約3MB／ハイスコア：約5MB）。起動時の表示を遅らせないよう、
+// リザルト背景（通常：約2.3MB／ハイスコア：約2.6MB MP4動画）。起動時の表示を遅らせないよう、
 //   通常   … 初回のゲーム開始時に読み込み開始
 //   ハイスコア … ベストを更新しそうになった時（ベストの6割に到達）に読み込み開始。初プレイでは使わない
 const RES_BG = {
-  normal: { poster: 'img/result-poster.webp', anim: 'img/result.webp' },
-  high:   { poster: 'img/result-high-poster.webp', anim: 'img/result-high.webp' },
+  normal: { poster: 'img/result-poster.webp', video: 'img/result.mp4' },
+  high:   { poster: 'img/result-high-poster.webp', video: 'img/result-high.mp4' },
 };
 const resPre = {};
 function preloadRes(kind) {
   if (resPre[kind]) return;
-  resPre[kind] = [new Image(), new Image()];
-  resPre[kind][0].src = RES_BG[kind].poster; resPre[kind][1].src = RES_BG[kind].anim;
+  resPre[kind] = true;
+  const v = document.createElement('video');
+  v.src = RES_BG[kind].video; v.preload = 'auto'; v.muted = true;
 }
 function loadResultBg() { preloadRes('normal'); }
 function checkHighPreload() { if (!resPre.high && best > 0 && score >= best * .6) preloadRes('high'); }
@@ -1243,9 +1244,12 @@ function showResultBg(kind) {
   preloadRes(kind);
   const a = $('resAnim');
   $('resPoster').src = RES_BG[kind].poster;
-  a.classList.remove('ready'); a.onload = () => a.classList.add('ready');
-  a.src = RES_BG[kind].anim;
-  if (a.complete && a.naturalWidth) a.classList.add('ready');
+  a.classList.remove('ready');
+  a.src = RES_BG[kind].video;
+  a.load();
+  const onReady = () => { a.classList.add('ready'); a.play().catch(() => {}); };
+  a.onloadeddata = onReady;
+  if (a.readyState >= 2) onReady();
 }
 // 得点を0から数え上げる
 function countUp(el, to, ms) {

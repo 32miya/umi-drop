@@ -135,7 +135,7 @@
 
 <div class="hide" id="over">
   <img id="resPoster" alt="">
-  <video id="resAnim" loop playsinline></video>
+  <video id="resAnim" playsinline></video>
   <div id="resShade"></div>
   <div id="resTop">
     <div id="resLabel">RESULT</div>
@@ -1258,6 +1258,8 @@ function showResultBg(kind) {
   };
   a.onloadeddata = onReady;
   if (a.readyState >= 2) onReady();
+  // iOSはloop属性で音声セッションがリセットされるため、endedで手動ループ
+  a.onended = () => { a.currentTime = 0; a.play().catch(() => {}); };
 }
 // 得点を0から数え上げる
 function countUp(el, to, ms) {

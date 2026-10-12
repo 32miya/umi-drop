@@ -1272,12 +1272,14 @@ function countUp(el, to, ms) {
   requestAnimationFrame(step);
 }
 function start() {
+  const a = $('resAnim'); a.onended = null; a.pause(); a.src = '';
   lastVW = -1; fitViewport(); loadResultBg();
   audio(); reset(); running = true;
   $('title').classList.add('hide'); $('over').classList.add('hide');
 }
 $('startBtn').addEventListener('click', start);
 $('toTitleBtn').addEventListener('click', () => {
+  const a = $('resAnim'); a.onended = null; a.pause(); a.src = '';
   $('over').classList.add('hide'); $('title').classList.remove('hide');
   $('titleBest').textContent = best ? `ベスト ${best}` : '';
 });
